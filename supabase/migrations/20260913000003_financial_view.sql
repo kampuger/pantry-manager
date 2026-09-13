@@ -1,4 +1,6 @@
-create view v_household_financials as
+create view v_household_financials
+with (security_invoker = true)
+as
 select
   household_id,
   sum(value_delta) filter (where event_type = 'CONSUMED') as consumed_value,

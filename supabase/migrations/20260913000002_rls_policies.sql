@@ -6,6 +6,7 @@ returns boolean
 language sql
 security definer
 stable
+set search_path = pg_catalog, public
 as $$
   select exists (
     select 1
@@ -20,6 +21,7 @@ returns boolean
 language sql
 security definer
 stable
+set search_path = pg_catalog, public
 as $$
   select exists (
     select 1
@@ -77,6 +79,17 @@ create policy "members can view membership roster"
 create policy "owners/admins can add members"
   on household_members for insert
   with check (is_household_admin_or_owner(household_id));
+
+create policy "creator can add themselves as owner"
+  on household_members for insert
+  with check (
+    user_id = auth.uid()
+    and role = 'OWNER'
+    and exists (
+      select 1 from households h
+      where h.id = household_id and h.created_by = auth.uid()
+    )
+  );
 
 create policy "owners/admins can update member roles"
   on household_members for update
