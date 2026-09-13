@@ -18,7 +18,7 @@ npx playwright install chromium   # downloads a Playwright-managed Chromium (~28
 
 ## Setup
 
-No env vars or config patches needed — this app has no backend wiring yet (no Supabase URL/key required to view any of the 5 routes).
+Requires `apps/web/.env.local` with `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` (see `apps/web/.env.example` for the shape) — `src/lib/supabaseClient.ts` throws at import time if either is missing, which takes down every route, not just the ones that query data. All 5 routes still render without signing in (each has a signed-out fallback: demo seed data or a "sign in" prompt), so no Supabase *data* is required to smoke-test the UI — just the env vars themselves.
 
 ## Build
 
