@@ -1,8 +1,16 @@
-import { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, View, Button, ActivityIndicator } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { ScrollView, StyleSheet, Text, TextInput, View, Button, ActivityIndicator, Pressable } from 'react-native';
 import { getFreshnessFlag } from '@pantry/core';
 import { getExpiryBadgeStatus, type ExpiryBadgeStatus } from '@pantry/ui';
-import { getMyHousehold, createHousehold, type HouseholdMembership, type Database } from '@pantry/supabase-client';
+import {
+  getMyHousehold,
+  createHousehold,
+  addPantryItem,
+  UNIT_OPTIONS,
+  STORAGE_LOCATION_OPTIONS,
+  type HouseholdMembership,
+  type Database,
+} from '@pantry/supabase-client';
 import { pantrySeed } from '../data/seed';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../lib/AuthProvider';
@@ -92,6 +100,88 @@ function CreateHouseholdForm({ userId, onCreated }: { userId: string; onCreated:
   );
 }
 
+function ChipSelect<T extends string>({
+  options,
+  value,
+  onChange,
+}: {
+  options: readonly T[];
+  value: T;
+  onChange: (v: T) => void;
+}) {
+  return (
+    <View style={styles.chipRow}>
+      {options.map((option) => (
+        <Pressable
+          key={option}
+          onPress={() => onChange(option)}
+          style={[styles.chip, option === value && styles.chipSelected]}
+        >
+          <Text style={option === value ? styles.chipTextSelected : styles.chipText}>{option}</Text>
+        </Pressable>
+      ))}
+    </View>
+  );
+}
+
+function AddItemForm({
+  householdId,
+  userId,
+  onAdded,
+}: {
+  householdId: string;
+  userId: string;
+  onAdded: () => void;
+}) {
+  const [name, setName] = useState('');
+  const [quantity, setQuantity] = useState('1');
+  const [unit, setUnit] = useState<string>(UNIT_OPTIONS[0]);
+  const [storageLocation, setStorageLocation] = useState<string>(STORAGE_LOCATION_OPTIONS[0]);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit() {
+    if (!name.trim()) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await addPantryItem(supabase, householdId, userId, {
+        name: name.trim(),
+        quantity: Number(quantity) || 0,
+        unit,
+        storageLocation,
+      });
+      setName('');
+      setQuantity('1');
+      onAdded();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to add item');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <View style={styles.addForm}>
+      <Text style={styles.addFormTitle}>Add item</Text>
+      <TextInput placeholder="Name" value={name} onChangeText={setName} style={styles.input} />
+      <TextInput
+        placeholder="Quantity"
+        keyboardType="numeric"
+        value={quantity}
+        onChangeText={setQuantity}
+        style={styles.input}
+      />
+      <Text style={styles.fieldLabel}>Unit</Text>
+      <ChipSelect options={UNIT_OPTIONS} value={unit} onChange={setUnit} />
+      <Text style={styles.fieldLabel}>Storage</Text>
+      <ChipSelect options={STORAGE_LOCATION_OPTIONS} value={storageLocation} onChange={setStorageLocation} />
+      {error && <Text style={{ color: '#b91c1c' }}>{error}</Text>}
+      <Button title={submitting ? 'Adding…' : 'Add item'} onPress={handleSubmit} disabled={submitting} />
+    </View>
+  );
+}
+
 function RealPantryList({ items }: { items: PantryItemRow[] }) {
   if (items.length === 0) {
     return <Text style={{ color: '#64748b' }}>No pantry items yet.</Text>;
@@ -141,16 +231,19 @@ export function PantryScreen() {
     };
   }, [session]);
 
-  useEffect(() => {
-    if (!membership || membership === 'loading') return;
-
+  const refreshItems = useCallback((householdId: string) => {
     supabase
       .from('pantry_items')
       .select('*')
-      .eq('household_id', membership.householdId)
+      .eq('household_id', householdId)
       .eq('is_archived', false)
       .then(({ data }) => setItems(data ?? []));
-  }, [membership]);
+  }, []);
+
+  useEffect(() => {
+    if (!membership || membership === 'loading') return;
+    refreshItems(membership.householdId);
+  }, [membership, refreshItems]);
 
   // PantryScreen only renders once App.tsx has already confirmed a session
   // exists (see App.tsx's Root component), so `session` is always non-null
@@ -169,7 +262,16 @@ export function PantryScreen() {
       <Text style={styles.title}>Pantry Inventory</Text>
       {membership === 'loading' && <ActivityIndicator />}
       {membership === null && <CreateHouseholdForm userId={session.user.id} onCreated={setMembership} />}
-      {membership && membership !== 'loading' && <RealPantryList items={items} />}
+      {membership && membership !== 'loading' && (
+        <>
+          <AddItemForm
+            householdId={membership.householdId}
+            userId={session.user.id}
+            onAdded={() => refreshItems(membership.householdId)}
+          />
+          <RealPantryList items={items} />
+        </>
+      )}
     </ScrollView>
   );
 }
@@ -182,4 +284,12 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   name: { fontSize: 18, fontWeight: '600' },
   badge: { borderRadius: 999, overflow: 'hidden', paddingHorizontal: 10, paddingVertical: 4, fontSize: 12, textTransform: 'capitalize' },
+  addForm: { borderColor: '#e2e8f0', borderWidth: 1, borderRadius: 12, padding: 16, gap: 10 },
+  addFormTitle: { fontSize: 16, fontWeight: '700' },
+  fieldLabel: { fontSize: 12, color: '#64748b', marginBottom: -4 },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: { borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },
+  chipSelected: { backgroundColor: '#2563eb', borderColor: '#2563eb' },
+  chipText: { fontSize: 13, color: '#334155' },
+  chipTextSelected: { fontSize: 13, color: '#fff', fontWeight: '600' },
 });
