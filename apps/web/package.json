@@ -9,14 +9,14 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@pantry/core": "*",
+    "@pantry/notifications": "*",
+    "@pantry/ocr": "*",
+    "@pantry/supabase-client": "*",
+    "@pantry/ui": "*",
     "next": "16.3.5",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "@pantry/core": "*",
-    "@pantry/ocr": "*",
-    "@pantry/notifications": "*",
-    "@pantry/ui": "*",
-    "@pantry/supabase-client": "*",
     "react-native-web": "^0.21.2"
   },
   "devDependencies": {
@@ -25,6 +25,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.5",
+    "playwright": "^1.63.0",
     "typescript": "^5"
   }
 }
