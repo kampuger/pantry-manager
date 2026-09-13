@@ -1,19 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, View, Button, ActivityIndicator, Pressable } from 'react-native';
+import { ScrollView, StyleSheet, Text, TextInput, View, Button, ActivityIndicator } from 'react-native';
 import { getFreshnessFlag } from '@pantry/core';
 import { getExpiryBadgeStatus, type ExpiryBadgeStatus } from '@pantry/ui';
-import {
-  getMyHousehold,
-  createHousehold,
-  addPantryItem,
-  UNIT_OPTIONS,
-  STORAGE_LOCATION_OPTIONS,
-  type HouseholdMembership,
-  type Database,
-} from '@pantry/supabase-client';
+import { addPantryItem, UNIT_OPTIONS, STORAGE_LOCATION_OPTIONS, type Database } from '@pantry/supabase-client';
 import { pantrySeed } from '../data/seed';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../lib/AuthProvider';
+import { useHousehold } from '../lib/useHousehold';
+import { CreateHouseholdPrompt } from '../components/CreateHouseholdPrompt';
+import { ChipSelect } from '../components/ChipSelect';
 
 type PantryItemRow = Database['public']['Tables']['pantry_items']['Row'];
 
@@ -64,63 +59,6 @@ function DemoPantryList() {
         );
       })}
     </>
-  );
-}
-
-function CreateHouseholdForm({ userId, onCreated }: { userId: string; onCreated: (m: HouseholdMembership) => void }) {
-  const [name, setName] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function handleSubmit() {
-    setSubmitting(true);
-    setError(null);
-    try {
-      const membership = await createHousehold(supabase, userId, name.trim() || 'My Household');
-      onCreated(membership);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create household');
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <View style={{ gap: 12 }}>
-      <Text>You&apos;re signed in, but not part of a household yet.</Text>
-      <TextInput
-        placeholder="Household name"
-        value={name}
-        onChangeText={setName}
-        style={styles.input}
-      />
-      {error && <Text style={{ color: '#b91c1c' }}>{error}</Text>}
-      <Button title={submitting ? 'Creating…' : 'Create household'} onPress={handleSubmit} disabled={submitting} />
-    </View>
-  );
-}
-
-function ChipSelect<T extends string>({
-  options,
-  value,
-  onChange,
-}: {
-  options: readonly T[];
-  value: T;
-  onChange: (v: T) => void;
-}) {
-  return (
-    <View style={styles.chipRow}>
-      {options.map((option) => (
-        <Pressable
-          key={option}
-          onPress={() => onChange(option)}
-          style={[styles.chip, option === value && styles.chipSelected]}
-        >
-          <Text style={option === value ? styles.chipTextSelected : styles.chipText}>{option}</Text>
-        </Pressable>
-      ))}
-    </View>
   );
 }
 
@@ -213,23 +151,8 @@ function RealPantryList({ items }: { items: PantryItemRow[] }) {
 
 export function PantryScreen() {
   const { session } = useAuth();
-  const [membership, setMembership] = useState<HouseholdMembership | null | 'loading'>('loading');
+  const { membership, create } = useHousehold();
   const [items, setItems] = useState<PantryItemRow[]>([]);
-
-  useEffect(() => {
-    if (!session) return;
-
-    let cancelled = false;
-    setMembership('loading');
-
-    getMyHousehold(supabase, session.user.id).then((result) => {
-      if (!cancelled) setMembership(result);
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [session]);
 
   const refreshItems = useCallback((householdId: string) => {
     supabase
@@ -261,7 +184,7 @@ export function PantryScreen() {
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.title}>Pantry Inventory</Text>
       {membership === 'loading' && <ActivityIndicator />}
-      {membership === null && <CreateHouseholdForm userId={session.user.id} onCreated={setMembership} />}
+      {membership === null && <CreateHouseholdPrompt onCreate={create} />}
       {membership && membership !== 'loading' && (
         <>
           <AddItemForm
@@ -287,9 +210,4 @@ const styles = StyleSheet.create({
   addForm: { borderColor: '#e2e8f0', borderWidth: 1, borderRadius: 12, padding: 16, gap: 10 },
   addFormTitle: { fontSize: 16, fontWeight: '700' },
   fieldLabel: { fontSize: 12, color: '#64748b', marginBottom: -4 },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: { borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },
-  chipSelected: { backgroundColor: '#2563eb', borderColor: '#2563eb' },
-  chipText: { fontSize: 13, color: '#334155' },
-  chipTextSelected: { fontSize: 13, color: '#fff', fontWeight: '600' },
 });

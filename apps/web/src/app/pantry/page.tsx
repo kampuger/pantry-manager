@@ -3,18 +3,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { getFreshnessFlag } from '@pantry/core';
 import { getExpiryBadgeStatus, type ExpiryBadgeStatus } from '@pantry/ui';
-import {
-  getMyHousehold,
-  createHousehold,
-  addPantryItem,
-  UNIT_OPTIONS,
-  STORAGE_LOCATION_OPTIONS,
-  type HouseholdMembership,
-} from '@pantry/supabase-client';
+import { addPantryItem, UNIT_OPTIONS, STORAGE_LOCATION_OPTIONS } from '@pantry/supabase-client';
 import type { Database } from '@pantry/supabase-client';
 import { pantrySeed } from '@/data/seed';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/lib/AuthProvider';
+import { useHousehold } from '@/lib/useHousehold';
+import { CreateHouseholdPrompt } from '@/components/CreateHouseholdPrompt';
 
 type PantryItemRow = Database['public']['Tables']['pantry_items']['Row'];
 
@@ -65,44 +60,6 @@ function DemoPantryList() {
           </div>
         );
       })}
-    </div>
-  );
-}
-
-function CreateHouseholdForm({ userId, onCreated }: { userId: string; onCreated: (m: HouseholdMembership) => void }) {
-  const [name, setName] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setSubmitting(true);
-    setError(null);
-    try {
-      const membership = await createHousehold(supabase, userId, name.trim() || 'My Household');
-      onCreated(membership);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create household');
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <div style={{ marginTop: 20, maxWidth: 360 }}>
-      <p>You&apos;re signed in, but not part of a household yet.</p>
-      <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 12, marginTop: 12 }}>
-        <input
-          placeholder="Household name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          style={{ padding: 8 }}
-        />
-        {error && <p style={{ color: '#b91c1c' }}>{error}</p>}
-        <button type="submit" disabled={submitting} style={{ padding: 8, cursor: 'pointer' }}>
-          {submitting ? 'Creating…' : 'Create household'}
-        </button>
-      </form>
     </div>
   );
 }
@@ -256,23 +213,8 @@ function RealPantryList({ items }: { items: PantryItemRow[] }) {
 
 export default function PantryPage() {
   const { session, loading: authLoading } = useAuth();
-  const [membership, setMembership] = useState<HouseholdMembership | null | 'loading'>('loading');
+  const { membership, create } = useHousehold();
   const [items, setItems] = useState<PantryItemRow[]>([]);
-
-  useEffect(() => {
-    if (!session) return;
-
-    let cancelled = false;
-    setMembership('loading');
-
-    getMyHousehold(supabase, session.user.id).then((result) => {
-      if (!cancelled) setMembership(result);
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [session]);
 
   const refreshItems = useCallback((householdId: string) => {
     supabase
@@ -306,9 +248,7 @@ export default function PantryPage() {
     <div>
       <h1>Pantry Inventory</h1>
       {membership === 'loading' && <p style={{ marginTop: 20, color: '#64748b' }}>Loading…</p>}
-      {membership === null && (
-        <CreateHouseholdForm userId={session.user.id} onCreated={setMembership} />
-      )}
+      {membership === null && <CreateHouseholdPrompt onCreate={create} />}
       {membership && membership !== 'loading' && (
         <>
           <AddItemForm
