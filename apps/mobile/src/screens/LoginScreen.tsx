@@ -1,6 +1,8 @@
 import { useState } from 'react';
-import { View, Text, TextInput, Button, StyleSheet } from 'react-native';
+import { View, Text, TextInput, StyleSheet } from 'react-native';
 import { useAuth } from '../lib/AuthProvider';
+import { AppButton } from '../components/AppButton';
+import { color, cardStyle, inputStyle, font } from '../lib/theme';
 
 export function LoginScreen() {
   const { signIn, signUp } = useAuth();
@@ -31,43 +33,49 @@ export function LoginScreen() {
   }
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>{mode === 'sign-in' ? 'Sign in' : 'Create an account'}</Text>
-      <TextInput
-        placeholder="Email"
-        autoCapitalize="none"
-        keyboardType="email-address"
-        value={email}
-        onChangeText={setEmail}
-        style={styles.input}
-      />
-      <TextInput
-        placeholder="Password"
-        secureTextEntry
-        value={password}
-        onChangeText={setPassword}
-        style={styles.input}
-      />
-      {status && <Text style={styles.error}>{status}</Text>}
-      <Button
-        title={submitting ? 'Please wait…' : mode === 'sign-in' ? 'Sign in' : 'Sign up'}
-        onPress={handleSubmit}
-        disabled={submitting}
-      />
-      <Text
-        style={styles.link}
-        onPress={() => setMode(mode === 'sign-in' ? 'sign-up' : 'sign-in')}
-      >
-        {mode === 'sign-in' ? 'Need an account? Sign up' : 'Already have an account? Sign in'}
-      </Text>
+    <View style={styles.screen}>
+      <View style={styles.card}>
+        <Text style={styles.title}>{mode === 'sign-in' ? 'Welcome back' : 'Create an account'}</Text>
+        <Text style={styles.subtitle}>
+          {mode === 'sign-in' ? 'Sign in to see your household’s pantry.' : 'Set up your household in a minute.'}
+        </Text>
+        <View style={styles.form}>
+          <View>
+            <Text style={styles.label}>Email</Text>
+            <TextInput
+              autoCapitalize="none"
+              keyboardType="email-address"
+              value={email}
+              onChangeText={setEmail}
+              style={inputStyle}
+            />
+          </View>
+          <View>
+            <Text style={styles.label}>Password</Text>
+            <TextInput secureTextEntry value={password} onChangeText={setPassword} style={inputStyle} />
+          </View>
+          {status && <Text style={styles.error}>{status}</Text>}
+          <AppButton
+            title={submitting ? 'Please wait…' : mode === 'sign-in' ? 'Sign in' : 'Sign up'}
+            onPress={handleSubmit}
+            disabled={submitting}
+          />
+        </View>
+        <Text style={styles.link} onPress={() => setMode(mode === 'sign-in' ? 'sign-up' : 'sign-in')}>
+          {mode === 'sign-in' ? 'Need an account? Sign up' : 'Already have an account? Sign in'}
+        </Text>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: 'center', padding: 24, gap: 12 },
-  title: { fontSize: 24, fontWeight: '700', marginBottom: 8 },
-  input: { borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 8, padding: 12 },
-  error: { color: '#b91c1c' },
-  link: { color: '#2563eb', marginTop: 12, textAlign: 'center' },
+  screen: { flex: 1, justifyContent: 'center', padding: 24, backgroundColor: color.background },
+  card: { ...cardStyle, padding: 24 },
+  title: { fontSize: 22, fontFamily: font.bold, color: color.foreground },
+  subtitle: { fontSize: 14, color: color.mutedForeground, marginTop: 6, fontFamily: font.regular },
+  label: { fontSize: 13, fontFamily: font.semibold, color: color.mutedForeground, marginBottom: 6 },
+  form: { gap: 16, marginTop: 20 },
+  error: { color: color.destructive, fontSize: 13, fontFamily: font.regular },
+  link: { color: color.primary, marginTop: 16, textAlign: 'center', fontFamily: font.semibold },
 });

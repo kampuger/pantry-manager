@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "main": "index.ts",
   "dependencies": {
+    "@expo-google-fonts/plus-jakarta-sans": "^0.4.2",
     "@pantry/core": "*",
     "@pantry/notifications": "*",
     "@pantry/ocr": "*",
@@ -12,6 +13,7 @@
     "@react-navigation/bottom-tabs": "^6.6.1",
     "@react-navigation/native": "^6.1.18",
     "expo": "~57.0.22",
+    "expo-font": "~57.0.4",
     "expo-status-bar": "~57.0.1",
     "react": "19.2.8",
     "react-dom": "19.2.8",

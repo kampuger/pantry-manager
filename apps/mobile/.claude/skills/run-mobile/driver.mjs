@@ -103,8 +103,13 @@ check('Sign in screen renders', await waitVisible('text=Sign in'));
 await shot('login');
 
 console.log(`Signing up as ${email} ...`);
-await page.fill('input[placeholder="Email"]', email);
-await page.fill('input[placeholder="Password"]', password);
+// LoginScreen uses persistent visible labels, not placeholder-as-label
+// (the correct UX pattern — see pro-rules.md's placeholder-only-label
+// anti-pattern), so there's no placeholder text to select on. Target by
+// input type instead: password is unambiguous via type="password", and
+// email is the only other text input on the screen.
+await page.locator('input').first().fill(email);
+await page.locator('input[type="password"]').fill(password);
 await page.click('text=Need an account? Sign up');
 await page.click('text=Sign up');
 check('Dashboard visible after sign-up', await waitVisible('text=Dashboard'));
@@ -130,7 +135,7 @@ for (const tab of tabs) {
 console.log('Creating a household from the Pantry tab ...');
 await page.click('text="Pantry"');
 await page.waitForSelector('text=not part of a household yet', { timeout: 20000 });
-await page.fill('input[placeholder="Household name"]', 'Mobile Test Household');
+await page.fill('input[placeholder*="Santos"]', 'Mobile Test Household');
 await page.click('text=Create household');
 check('Household created, empty pantry state shows', await waitVisible('text=No pantry items yet.'));
 await shot('pantry-with-household');

@@ -3,17 +3,20 @@
 // wiring up the camera flow is separate scope. This screen instead accepts
 // pasted recipe text directly, which needs no OCR at all.
 import { useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, View, Button } from 'react-native';
+import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { matchRecipeIngredients, type MatchedIngredient } from '@pantry/core';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../lib/AuthProvider';
 import { useHousehold } from '../lib/useHousehold';
 import { CreateHouseholdPrompt } from '../components/CreateHouseholdPrompt';
+import { Badge } from '../components/Badge';
+import { AppButton } from '../components/AppButton';
+import { color, cardStyle, font } from '../lib/theme';
 
-const STATUS_STYLES: Record<MatchedIngredient['status'], { background: string; color: string; label: string }> = {
-  FULLY_AVAILABLE: { background: '#dcfce7', color: '#166534', label: 'Available' },
-  PARTIALLY_AVAILABLE: { background: '#fef3c7', color: '#92400e', label: 'Partial' },
-  MISSING: { background: '#fee2e2', color: '#b91c1c', label: 'Missing' },
+const STATUS_TONE: Record<MatchedIngredient['status'], { tone: 'success' | 'warning' | 'destructive'; label: string }> = {
+  FULLY_AVAILABLE: { tone: 'success', label: 'Available' },
+  PARTIALLY_AVAILABLE: { tone: 'warning', label: 'Partial' },
+  MISSING: { tone: 'destructive', label: 'Missing' },
 };
 
 function IngredientMatcher({ householdId }: { householdId: string }) {
@@ -47,7 +50,7 @@ function IngredientMatcher({ householdId }: { householdId: string }) {
 
   return (
     <View style={{ gap: 12 }}>
-      <Text style={{ color: '#64748b' }}>
+      <Text style={styles.meta}>
         Paste a recipe&apos;s ingredient list below, one per line (e.g. &quot;2 tbsp butter&quot;), and check it
         against your pantry. Photo/OCR capture is on hold for now.
       </Text>
@@ -59,8 +62,8 @@ function IngredientMatcher({ householdId }: { householdId: string }) {
         numberOfLines={8}
         style={styles.textarea}
       />
-      <Button title={checking ? 'Checking…' : 'Check ingredients'} onPress={handleCheck} disabled={checking || !text.trim()} />
-      {error && <Text style={{ color: '#b91c1c' }}>{error}</Text>}
+      <AppButton title={checking ? 'Checking…' : 'Check ingredients'} onPress={handleCheck} disabled={checking || !text.trim()} />
+      {error && <Text style={styles.error}>{error}</Text>}
 
       {results && (
         <View style={{ gap: 10 }}>
@@ -69,20 +72,18 @@ function IngredientMatcher({ householdId }: { householdId: string }) {
             {missingCount > 0 ? ` — ${missingCount} missing` : ''}
           </Text>
           {results.map((r, i) => {
-            const style = STATUS_STYLES[r.status];
+            const status = STATUS_TONE[r.status];
             return (
               <View key={i} style={styles.resultRow}>
                 <View style={{ flexShrink: 1 }}>
-                  <Text style={{ fontWeight: '600' }}>{r.rawLine}</Text>
+                  <Text style={styles.resultLine}>{r.rawLine}</Text>
                   {r.matchedStock && (
-                    <Text style={{ color: '#64748b', fontSize: 13 }}>
+                    <Text style={styles.meta}>
                       In stock: {r.matchedStock.quantity} {r.matchedStock.unit} {r.matchedStock.name}
                     </Text>
                   )}
                 </View>
-                <Text style={[styles.badge, { backgroundColor: style.background, color: style.color }]}>
-                  {style.label}
-                </Text>
+                <Badge tone={status.tone}>{status.label}</Badge>
               </View>
             );
           })}
@@ -98,15 +99,15 @@ export function RecipeOcrScreen() {
 
   if (!session) {
     return (
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
         <Text style={styles.title}>Recipe Ingredient Checker</Text>
-        <Text style={{ color: '#64748b' }}>Sign in to check a recipe against your household&apos;s pantry.</Text>
+        <Text style={styles.meta}>Sign in to check a recipe against your household&apos;s pantry.</Text>
       </ScrollView>
     );
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
       <Text style={styles.title}>Recipe Ingredient Checker</Text>
       {membership === null && <CreateHouseholdPrompt onCreate={create} />}
       {membership && membership !== 'loading' && <IngredientMatcher householdId={membership.householdId} />}
@@ -115,19 +116,30 @@ export function RecipeOcrScreen() {
 }
 
 const styles = StyleSheet.create({
+  screen: { backgroundColor: color.background },
   container: { padding: 20, gap: 12 },
-  title: { fontSize: 28, fontWeight: '700', marginBottom: 8 },
-  textarea: { borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 8, padding: 12, minHeight: 140, textAlignVertical: 'top' },
-  resultsTitle: { fontSize: 16, fontWeight: '700' },
+  title: { fontSize: 26, fontFamily: font.bold, color: color.foreground, marginBottom: 8 },
+  meta: { color: color.mutedForeground, fontSize: 13, fontFamily: font.regular },
+  error: { color: color.destructive, fontFamily: font.regular, fontSize: 13 },
+  textarea: {
+    borderWidth: 1,
+    borderColor: color.border,
+    borderRadius: 8,
+    padding: 12,
+    minHeight: 140,
+    textAlignVertical: 'top',
+    fontFamily: font.regular,
+    color: color.foreground,
+    backgroundColor: color.card,
+  },
+  resultsTitle: { fontSize: 15, fontFamily: font.bold, color: color.foreground },
+  resultLine: { fontFamily: font.semibold, color: color.foreground },
   resultRow: {
+    ...cardStyle,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    borderColor: '#e2e8f0',
-    borderWidth: 1,
-    borderRadius: 12,
     padding: 12,
     gap: 8,
   },
-  badge: { borderRadius: 999, overflow: 'hidden', paddingHorizontal: 10, paddingVertical: 4, fontSize: 12, fontWeight: '600' },
 });

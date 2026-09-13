@@ -1,10 +1,11 @@
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { formatPHP } from '@pantry/core';
 import { budgetSeed } from '../data/seed';
+import { color, cardStyle, font } from '../lib/theme';
 
 export function FinancialsScreen() {
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
       <Text style={styles.title}>Financial snapshot</Text>
 
       <View style={styles.summaryCard}>
@@ -21,7 +22,7 @@ export function FinancialsScreen() {
           { label: 'Produce', amount: 310 },
         ].map((row) => (
           <View key={row.label} style={styles.row}>
-            <Text>{row.label}</Text>
+            <Text style={styles.rowLabel}>{row.label}</Text>
             <Text style={styles.amount}>{formatPHP(row.amount)}</Text>
           </View>
         ))}
@@ -31,13 +32,15 @@ export function FinancialsScreen() {
 }
 
 const styles = StyleSheet.create({
+  screen: { backgroundColor: color.background },
   container: { padding: 20, gap: 16 },
-  title: { fontSize: 28, fontWeight: '700' },
-  summaryCard: { backgroundColor: '#f8fafc', borderColor: '#e2e8f0', borderWidth: 1, borderRadius: 12, padding: 20 },
-  label: { color: '#64748b', fontSize: 12 },
-  value: { marginTop: 8, fontSize: 30, fontWeight: '700' },
-  panel: { borderColor: '#e2e8f0', borderWidth: 1, borderRadius: 12, padding: 16 },
-  panelTitle: { fontSize: 18, fontWeight: '700', marginBottom: 12 },
+  title: { fontSize: 26, fontFamily: font.bold, color: color.foreground },
+  summaryCard: { ...cardStyle, padding: 20 },
+  label: { color: color.mutedForeground, fontSize: 12, fontFamily: font.medium },
+  value: { marginTop: 8, fontSize: 28, fontFamily: font.bold, color: color.foreground },
+  panel: { ...cardStyle, padding: 16 },
+  panelTitle: { fontSize: 16, fontFamily: font.bold, color: color.foreground, marginBottom: 12 },
   row: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8 },
-  amount: { fontWeight: '700' },
+  rowLabel: { fontFamily: font.regular, color: color.foreground },
+  amount: { fontFamily: font.bold, color: color.foreground },
 });

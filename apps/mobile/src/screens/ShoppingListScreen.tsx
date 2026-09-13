@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, View, Button, ActivityIndicator, Pressable } from 'react-native';
+import { ScrollView, StyleSheet, Text, TextInput, View, ActivityIndicator, Pressable } from 'react-native';
 import {
   addGroceryListEntry,
   setGroceryListEntryChecked,
@@ -13,8 +13,16 @@ import { useAuth } from '../lib/AuthProvider';
 import { useHousehold } from '../lib/useHousehold';
 import { CreateHouseholdPrompt } from '../components/CreateHouseholdPrompt';
 import { ChipSelect } from '../components/ChipSelect';
+import { AppButton } from '../components/AppButton';
+import { color, cardStyle, inputStyle, font } from '../lib/theme';
 
 type GroceryListEntryRow = Database['public']['Tables']['grocery_list_entries']['Row'];
+
+const PRIORITY_COLOR: Record<string, string> = {
+  High: color.destructive,
+  Medium: color.warning,
+  Low: color.success,
+};
 
 function DemoShoppingList() {
   return (
@@ -23,17 +31,10 @@ function DemoShoppingList() {
         <View key={item.id} style={styles.itemCard}>
           <View style={styles.headerRow}>
             <Text style={[styles.name, item.checked && styles.checked]}>{item.name}</Text>
-            <Text
-              style={[
-                styles.priority,
-                { color: item.priority === 'High' ? '#dc2626' : item.priority === 'Medium' ? '#d97706' : '#15803d' },
-              ]}
-            >
-              {item.priority}
-            </Text>
+            <Text style={[styles.priority, { color: PRIORITY_COLOR[item.priority] }]}>{item.priority}</Text>
           </View>
-          <Text>
-            {item.quantity} • {item.category}
+          <Text style={styles.meta}>
+            {item.quantity} · {item.category}
           </Text>
           <Text style={styles.cost}>₱{item.estimatedCost}</Text>
         </View>
@@ -82,25 +83,25 @@ function AddEntryForm({
   return (
     <View style={styles.addForm}>
       <Text style={styles.addFormTitle}>Add to list</Text>
-      <TextInput placeholder="Item" value={name} onChangeText={setName} style={styles.input} />
+      <TextInput placeholder="Item" value={name} onChangeText={setName} style={inputStyle} />
       <TextInput
         placeholder="Quantity (optional)"
         keyboardType="numeric"
         value={quantity}
         onChangeText={setQuantity}
-        style={styles.input}
+        style={inputStyle}
       />
       <Text style={styles.fieldLabel}>Unit (optional)</Text>
       <ChipSelect options={[NO_UNIT, ...UNIT_OPTIONS] as const} value={unit} onChange={setUnit} />
-      {error && <Text style={{ color: '#b91c1c' }}>{error}</Text>}
-      <Button title={submitting ? 'Adding…' : 'Add to list'} onPress={handleSubmit} disabled={submitting} />
+      {error && <Text style={styles.error}>{error}</Text>}
+      <AppButton title={submitting ? 'Adding…' : 'Add to list'} onPress={handleSubmit} disabled={submitting} />
     </View>
   );
 }
 
 function RealShoppingList({ entries, onChanged }: { entries: GroceryListEntryRow[]; onChanged: () => void }) {
   if (entries.length === 0) {
-    return <Text style={{ color: '#64748b' }}>Your shopping list is empty.</Text>;
+    return <Text style={styles.meta}>Your shopping list is empty.</Text>;
   }
 
   async function toggle(entry: GroceryListEntryRow) {
@@ -125,7 +126,7 @@ function RealShoppingList({ entries, onChanged }: { entries: GroceryListEntryRow
             </Text>
           </Pressable>
           <Pressable onPress={() => remove(entry)}>
-            <Text style={{ color: '#b91c1c' }}>Remove</Text>
+            <Text style={styles.remove}>Remove</Text>
           </Pressable>
         </View>
       ))}
@@ -154,7 +155,7 @@ export function ShoppingListScreen() {
 
   if (!session) {
     return (
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
         <Text style={styles.title}>Shopping List</Text>
         <DemoShoppingList />
       </ScrollView>
@@ -162,9 +163,9 @@ export function ShoppingListScreen() {
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
       <Text style={styles.title}>Shopping List</Text>
-      {membership === 'loading' && <ActivityIndicator />}
+      {membership === 'loading' && <ActivityIndicator color={color.primary} />}
       {membership === null && <CreateHouseholdPrompt onCreate={create} />}
       {membership && membership !== 'loading' && (
         <>
@@ -181,29 +182,30 @@ export function ShoppingListScreen() {
 }
 
 const styles = StyleSheet.create({
+  screen: { backgroundColor: color.background },
   container: { padding: 20, gap: 12 },
-  title: { fontSize: 28, fontWeight: '700', marginBottom: 8 },
-  input: { borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 8, padding: 12 },
-  itemCard: { borderColor: '#e2e8f0', borderWidth: 1, borderRadius: 12, padding: 16, gap: 4 },
+  title: { fontSize: 26, fontFamily: font.bold, color: color.foreground, marginBottom: 8 },
+  itemCard: { ...cardStyle, padding: 16, gap: 4 },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  name: { fontSize: 18, fontWeight: '600' },
-  checked: { textDecorationLine: 'line-through', color: '#94a3b8' },
-  priority: { fontWeight: '600' },
-  cost: { fontWeight: '700', marginTop: 4 },
-  addForm: { borderColor: '#e2e8f0', borderWidth: 1, borderRadius: 12, padding: 16, gap: 10 },
-  addFormTitle: { fontSize: 16, fontWeight: '700' },
-  fieldLabel: { fontSize: 12, color: '#64748b', marginBottom: -4 },
+  name: { fontSize: 16, fontFamily: font.semibold, color: color.foreground },
+  meta: { color: color.mutedForeground, fontSize: 13, fontFamily: font.regular },
+  checked: { textDecorationLine: 'line-through', color: color.mutedForeground },
+  priority: { fontFamily: font.semibold, fontSize: 13 },
+  cost: { fontFamily: font.bold, marginTop: 4, color: color.foreground },
+  addForm: { ...cardStyle, padding: 16, gap: 10 },
+  addFormTitle: { fontSize: 15, fontFamily: font.bold, color: color.foreground },
+  fieldLabel: { fontSize: 12, color: color.mutedForeground, fontFamily: font.medium, marginBottom: -4 },
+  error: { color: color.destructive, fontFamily: font.regular, fontSize: 13 },
   entryRow: {
+    ...cardStyle,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    borderColor: '#e2e8f0',
-    borderWidth: 1,
-    borderRadius: 12,
     padding: 16,
   },
   entryTouchable: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 1 },
-  entryName: { flexShrink: 1 },
-  checkbox: { width: 18, height: 18, borderRadius: 4, borderWidth: 1.5, borderColor: '#94a3b8' },
-  checkboxChecked: { backgroundColor: '#2563eb', borderColor: '#2563eb' },
+  entryName: { flexShrink: 1, fontFamily: font.regular, color: color.foreground },
+  remove: { color: color.destructive, fontFamily: font.medium },
+  checkbox: { width: 18, height: 18, borderRadius: 4, borderWidth: 1.5, borderColor: color.border },
+  checkboxChecked: { backgroundColor: color.primary, borderColor: color.primary },
 });

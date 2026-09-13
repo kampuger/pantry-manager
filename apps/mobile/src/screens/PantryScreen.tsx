@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, View, Button, ActivityIndicator } from 'react-native';
+import { ScrollView, StyleSheet, Text, TextInput, View, ActivityIndicator } from 'react-native';
 import { getFreshnessFlag } from '@pantry/core';
 import { getExpiryBadgeStatus, type ExpiryBadgeStatus } from '@pantry/ui';
 import { addPantryItem, UNIT_OPTIONS, STORAGE_LOCATION_OPTIONS, type Database } from '@pantry/supabase-client';
@@ -9,14 +9,17 @@ import { useAuth } from '../lib/AuthProvider';
 import { useHousehold } from '../lib/useHousehold';
 import { CreateHouseholdPrompt } from '../components/CreateHouseholdPrompt';
 import { ChipSelect } from '../components/ChipSelect';
+import { Badge } from '../components/Badge';
+import { AppButton } from '../components/AppButton';
+import { color, cardStyle, inputStyle, font } from '../lib/theme';
 
 type PantryItemRow = Database['public']['Tables']['pantry_items']['Row'];
 
-const BADGE_STYLES: Record<ExpiryBadgeStatus, { background: string; color: string }> = {
-  critical: { background: '#fee2e2', color: '#b91c1c' },
-  warning: { background: '#fef3c7', color: '#92400e' },
-  ok: { background: '#dcfce7', color: '#166534' },
-  unknown: { background: '#e2e8f0', color: '#475569' },
+const EXPIRY_TONE: Record<ExpiryBadgeStatus, 'destructive' | 'warning' | 'success' | 'muted'> = {
+  critical: 'destructive',
+  warning: 'warning',
+  ok: 'success',
+  unknown: 'muted',
 };
 
 function daysUntil(dateStr: string | null): number | null {
@@ -30,31 +33,20 @@ function DemoPantryList() {
     <>
       {pantrySeed.map((item) => {
         const flagged = item.status === 'flagged' || getFreshnessFlag(item.lastRestock, item.category);
+        const tone = flagged ? 'destructive' : item.status === 'low' ? 'warning' : 'success';
 
         return (
           <View key={item.id} style={styles.itemCard}>
             <View style={styles.headerRow}>
               <Text style={styles.name}>{item.name}</Text>
-              <Text
-                style={[
-                  styles.badge,
-                  {
-                    backgroundColor: flagged ? '#fee2e2' : item.status === 'low' ? '#fef3c7' : '#dcfce7',
-                    color: flagged ? '#b91c1c' : item.status === 'low' ? '#92400e' : '#166534',
-                  },
-                ]}
-              >
-                {flagged ? 'flagged' : item.status}
-              </Text>
+              <Badge tone={tone}>{flagged ? 'flagged' : item.status}</Badge>
             </View>
-            <Text>
-              {item.quantity} {item.unit}
+            <Text style={styles.meta}>
+              {item.quantity} {item.unit} · {item.location} · {item.category}
             </Text>
-            <Text>
-              {item.location} • {item.category}
+            <Text style={styles.meta}>
+              Last restock: {new Date(item.lastRestock).toLocaleDateString()} · Expires: {item.expiry}
             </Text>
-            <Text>Last restock: {new Date(item.lastRestock).toLocaleDateString()}</Text>
-            <Text>Expires: {item.expiry}</Text>
           </View>
         );
       })}
@@ -102,46 +94,44 @@ function AddItemForm({
   return (
     <View style={styles.addForm}>
       <Text style={styles.addFormTitle}>Add item</Text>
-      <TextInput placeholder="Name" value={name} onChangeText={setName} style={styles.input} />
+      <TextInput placeholder="Name" value={name} onChangeText={setName} style={inputStyle} />
       <TextInput
         placeholder="Quantity"
         keyboardType="numeric"
         value={quantity}
         onChangeText={setQuantity}
-        style={styles.input}
+        style={inputStyle}
       />
       <Text style={styles.fieldLabel}>Unit</Text>
       <ChipSelect options={UNIT_OPTIONS} value={unit} onChange={setUnit} />
       <Text style={styles.fieldLabel}>Storage</Text>
       <ChipSelect options={STORAGE_LOCATION_OPTIONS} value={storageLocation} onChange={setStorageLocation} />
-      {error && <Text style={{ color: '#b91c1c' }}>{error}</Text>}
-      <Button title={submitting ? 'Adding…' : 'Add item'} onPress={handleSubmit} disabled={submitting} />
+      {error && <Text style={styles.error}>{error}</Text>}
+      <AppButton title={submitting ? 'Adding…' : 'Add item'} onPress={handleSubmit} disabled={submitting} />
     </View>
   );
 }
 
 function RealPantryList({ items }: { items: PantryItemRow[] }) {
   if (items.length === 0) {
-    return <Text style={{ color: '#64748b' }}>No pantry items yet.</Text>;
+    return <Text style={styles.meta}>No pantry items yet.</Text>;
   }
 
   return (
     <>
       {items.map((item) => {
         const status = getExpiryBadgeStatus(daysUntil(item.expiration_date));
-        const badge = BADGE_STYLES[status];
 
         return (
           <View key={item.id} style={styles.itemCard}>
             <View style={styles.headerRow}>
               <Text style={styles.name}>{item.name}</Text>
-              <Text style={[styles.badge, { backgroundColor: badge.background, color: badge.color }]}>{status}</Text>
+              <Badge tone={EXPIRY_TONE[status]}>{status}</Badge>
             </View>
-            <Text>
-              {item.quantity} {item.unit}
+            <Text style={styles.meta}>
+              {item.quantity} {item.unit} · {item.storage_location}
+              {item.expiration_date && ` · Expires ${item.expiration_date}`}
             </Text>
-            <Text>{item.storage_location}</Text>
-            {item.expiration_date && <Text>Expires: {item.expiration_date}</Text>}
           </View>
         );
       })}
@@ -173,7 +163,7 @@ export function PantryScreen() {
   // here in practice — this demo fallback covers the type only.
   if (!session) {
     return (
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
         <Text style={styles.title}>Pantry Inventory</Text>
         <DemoPantryList />
       </ScrollView>
@@ -181,9 +171,9 @@ export function PantryScreen() {
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
       <Text style={styles.title}>Pantry Inventory</Text>
-      {membership === 'loading' && <ActivityIndicator />}
+      {membership === 'loading' && <ActivityIndicator color={color.primary} />}
       {membership === null && <CreateHouseholdPrompt onCreate={create} />}
       {membership && membership !== 'loading' && (
         <>
@@ -200,14 +190,15 @@ export function PantryScreen() {
 }
 
 const styles = StyleSheet.create({
+  screen: { backgroundColor: color.background },
   container: { padding: 20, gap: 12 },
-  title: { fontSize: 28, fontWeight: '700', marginBottom: 8 },
-  input: { borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 8, padding: 12 },
-  itemCard: { borderColor: '#e2e8f0', borderWidth: 1, borderRadius: 12, padding: 16, gap: 4 },
+  title: { fontSize: 26, fontFamily: font.bold, color: color.foreground, marginBottom: 8 },
+  itemCard: { ...cardStyle, padding: 16, gap: 6 },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  name: { fontSize: 18, fontWeight: '600' },
-  badge: { borderRadius: 999, overflow: 'hidden', paddingHorizontal: 10, paddingVertical: 4, fontSize: 12, textTransform: 'capitalize' },
-  addForm: { borderColor: '#e2e8f0', borderWidth: 1, borderRadius: 12, padding: 16, gap: 10 },
-  addFormTitle: { fontSize: 16, fontWeight: '700' },
-  fieldLabel: { fontSize: 12, color: '#64748b', marginBottom: -4 },
+  name: { fontSize: 16, fontFamily: font.semibold, color: color.foreground },
+  meta: { color: color.mutedForeground, fontSize: 13, fontFamily: font.regular },
+  addForm: { ...cardStyle, padding: 16, gap: 10 },
+  addFormTitle: { fontSize: 15, fontFamily: font.bold, color: color.foreground },
+  fieldLabel: { fontSize: 12, color: color.mutedForeground, fontFamily: font.medium, marginBottom: -4 },
+  error: { color: color.destructive, fontFamily: font.regular, fontSize: 13 },
 });
