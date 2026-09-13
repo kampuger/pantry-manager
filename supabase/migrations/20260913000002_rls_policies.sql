@@ -50,7 +50,7 @@ alter table grocery_list_entries enable row level security;
 -- =========================================================
 create policy "members can read their household"
   on households for select
-  using (is_household_member(id));
+  using (created_by = auth.uid() or is_household_member(id));
 
 create policy "any authenticated user can create a household"
   on households for insert

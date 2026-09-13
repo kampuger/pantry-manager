@@ -191,12 +191,15 @@ create index idx_grocery_list_household on grocery_list_entries(household_id, is
 -- UPDATED_AT TRIGGER
 -- =========================================================
 create or replace function set_updated_at()
-returns trigger as $$
+returns trigger
+language plpgsql
+set search_path = pg_catalog, public
+as $$
 begin
   new.updated_at = now();
   return new;
 end;
-$$ language plpgsql;
+$$;
 
 create trigger trg_households_updated_at
   before update on households
