@@ -1,14 +1,21 @@
-import { getFreshnessFlag } from '@pantry/core';
+import { getFreshnessFlag, formatPHP } from '@pantry/core';
 import { budgetSeed, financialBreakdown, pantrySeed, shoppingSeed } from '@/data/seed';
+import { color, cardStyle, badgeStyle } from '@/lib/theme';
+
+const maxCategoryValue = Math.max(...financialBreakdown.map((row) => row.value));
 
 export default function DashboardPage() {
-  const flaggedCount = pantrySeed.filter((item) => item.status === 'flagged' || getFreshnessFlag(item.lastRestock, item.category)).length;
+  const flaggedCount = pantrySeed.filter(
+    (item) => item.status === 'flagged' || getFreshnessFlag(item.lastRestock, item.category)
+  ).length;
 
   return (
     <div style={{ display: 'grid', gap: 24 }}>
       <header>
-        <p style={{ margin: 0, color: '#64748b', textTransform: 'uppercase', letterSpacing: 1.2 }}>Overview</p>
-        <h1 style={{ margin: '8px 0 0' }}>Dashboard</h1>
+        <p style={{ margin: 0, color: color.mutedForeground, fontSize: 13, textTransform: 'uppercase', letterSpacing: 1.2 }}>
+          Overview
+        </p>
+        <h1 style={{ margin: '6px 0 0' }}>Dashboard</h1>
       </header>
 
       <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16 }}>
@@ -16,52 +23,76 @@ export default function DashboardPage() {
           { label: 'Pantry Items', value: pantrySeed.length },
           { label: 'Flagged Fresh', value: flaggedCount },
           { label: 'Shopping List', value: shoppingSeed.length },
-          { label: 'Budget Left', value: `₱${budgetSeed.remaining.toLocaleString()}` },
+          { label: 'Budget Left', value: formatPHP(budgetSeed.remaining) },
         ].map((card) => (
-          <div key={card.label} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: 20 }}>
-            <div style={{ color: '#64748b', fontSize: 12 }}>{card.label}</div>
-            <div style={{ marginTop: 8, fontSize: 28, fontWeight: 700 }}>{card.value}</div>
+          <div key={card.label} style={{ ...cardStyle, padding: 20 }}>
+            <div style={{ color: color.mutedForeground, fontSize: 13 }}>{card.label}</div>
+            <div style={{ marginTop: 8, fontSize: 26, fontWeight: 700 }}>{card.value}</div>
           </div>
         ))}
       </section>
 
       <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 20 }}>
-        <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: 20 }}>
-          <h2 style={{ marginTop: 0 }}>Pantry status</h2>
+        <div style={{ ...cardStyle, padding: 20 }}>
+          <h2 style={{ marginTop: 0, fontSize: 16 }}>Pantry status</h2>
           <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 10 }}>
-            {pantrySeed.slice(0, 5).map((item) => (
-              <li key={item.id} style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: 8 }}>
-                <span>{item.name}</span>
-                <span style={{ color: item.status === 'flagged' || getFreshnessFlag(item.lastRestock, item.category) ? '#dc2626' : item.status === 'low' ? '#d97706' : '#15803d', fontWeight: 600 }}>
-                  {item.status === 'flagged' || getFreshnessFlag(item.lastRestock, item.category) ? 'flagged' : item.status}
-                </span>
-              </li>
-            ))}
+            {pantrySeed.slice(0, 5).map((item) => {
+              const flagged = item.status === 'flagged' || getFreshnessFlag(item.lastRestock, item.category);
+              const tone = flagged ? 'destructive' : item.status === 'low' ? 'warning' : 'success';
+              return (
+                <li
+                  key={item.id}
+                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: `1px solid ${color.border}`, paddingBottom: 10 }}
+                >
+                  <span>{item.name}</span>
+                  <span style={badgeStyle(tone)}>{flagged ? 'flagged' : item.status}</span>
+                </li>
+              );
+            })}
           </ul>
         </div>
 
-        <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: 20 }}>
-          <h2 style={{ marginTop: 0 }}>Budget snapshot</h2>
-          <div style={{ display: 'grid', gap: 8 }}>
-            <div><strong>Monthly budget:</strong> ₱{budgetSeed.monthlyBudget.toLocaleString()}</div>
-            <div><strong>Spent:</strong> ₱{budgetSeed.spentThisMonth.toLocaleString()}</div>
-            <div><strong>Remaining:</strong> ₱{budgetSeed.remaining.toLocaleString()}</div>
-            <div><strong>Efficiency:</strong> {budgetSeed.pantryEfficiency}%</div>
+        <div style={{ ...cardStyle, padding: 20 }}>
+          <h2 style={{ marginTop: 0, fontSize: 16 }}>Budget snapshot</h2>
+          <div style={{ display: 'grid', gap: 10, fontSize: 14 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: color.mutedForeground }}>Monthly budget</span>
+              <strong>{formatPHP(budgetSeed.monthlyBudget)}</strong>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: color.mutedForeground }}>Spent</span>
+              <strong>{formatPHP(budgetSeed.spentThisMonth)}</strong>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: color.mutedForeground }}>Remaining</span>
+              <strong>{formatPHP(budgetSeed.remaining)}</strong>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: color.mutedForeground }}>Efficiency</span>
+              <strong>{budgetSeed.pantryEfficiency}%</strong>
+            </div>
           </div>
         </div>
       </section>
 
-      <section style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: 20 }}>
-        <h2 style={{ marginTop: 0 }}>Budget by category</h2>
-        <div style={{ display: 'grid', gap: 12 }}>
+      <section style={{ ...cardStyle, padding: 20 }}>
+        <h2 style={{ marginTop: 0, fontSize: 16 }}>Budget by category</h2>
+        <div style={{ display: 'grid', gap: 14, marginTop: 6 }}>
           {financialBreakdown.map((row) => (
             <div key={row.category}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, fontSize: 14 }}>
                 <span>{row.category}</span>
-                <span>₱{row.value.toLocaleString()}</span>
+                <span>{formatPHP(row.value)}</span>
               </div>
-              <div style={{ background: '#e2e8f0', borderRadius: 999, height: 8, overflow: 'hidden' }}>
-                <div style={{ width: `${(row.value / 920) * 100}%`, background: '#10b981', height: '100%' }} />
+              <div style={{ background: color.muted, borderRadius: 999, height: 8, overflow: 'hidden' }}>
+                <div
+                  style={{
+                    width: `${(row.value / maxCategoryValue) * 100}%`,
+                    background: color.primary,
+                    height: '100%',
+                    borderRadius: 999,
+                  }}
+                />
               </div>
             </div>
           ))}

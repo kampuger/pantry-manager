@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/AuthProvider';
+import { color, cardStyle, inputStyle, buttonStyle, labelStyle } from '@/lib/theme';
 
 export default function LoginPage() {
   const { session, signIn, signUp } = useAuth();
@@ -17,7 +18,7 @@ export default function LoginPage() {
     return (
       <div>
         <h1>Already signed in</h1>
-        <p>You&apos;re signed in as {session.user.email}.</p>
+        <p style={{ color: color.mutedForeground }}>You&apos;re signed in as {session.user.email}.</p>
       </div>
     );
   }
@@ -45,41 +46,48 @@ export default function LoginPage() {
   }
 
   return (
-    <div style={{ maxWidth: 360 }}>
-      <h1>{mode === 'sign-in' ? 'Sign in' : 'Create an account'}</h1>
-      <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 12, marginTop: 16 }}>
-        <label>
-          Email
-          <input
-            type="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            style={{ display: 'block', width: '100%', padding: 8, marginTop: 4 }}
-          />
-        </label>
-        <label>
-          Password
-          <input
-            type="password"
-            required
-            minLength={6}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            style={{ display: 'block', width: '100%', padding: 8, marginTop: 4 }}
-          />
-        </label>
-        {status && <p style={{ color: '#b91c1c' }}>{status}</p>}
-        <button type="submit" disabled={submitting} style={{ padding: 8, cursor: 'pointer' }}>
-          {submitting ? 'Please wait…' : mode === 'sign-in' ? 'Sign in' : 'Sign up'}
+    <div style={{ maxWidth: 380, margin: '40px auto 0' }}>
+      <div style={{ ...cardStyle, padding: 32 }}>
+        <h1 style={{ margin: 0, fontSize: 24 }}>{mode === 'sign-in' ? 'Welcome back' : 'Create an account'}</h1>
+        <p style={{ color: color.mutedForeground, marginTop: 6, fontSize: 14 }}>
+          {mode === 'sign-in' ? 'Sign in to see your household’s pantry.' : 'Set up your household in a minute.'}
+        </p>
+        <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 16, marginTop: 24 }}>
+          <label style={labelStyle}>
+            Email
+            <input
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              style={inputStyle}
+            />
+          </label>
+          <label style={labelStyle}>
+            Password
+            <input
+              type="password"
+              required
+              minLength={6}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              style={inputStyle}
+            />
+          </label>
+          {status && (
+            <p style={{ color: color.destructive, fontSize: 13, margin: 0 }}>{status}</p>
+          )}
+          <button type="submit" disabled={submitting} style={{ ...buttonStyle('primary'), width: '100%' }}>
+            {submitting ? 'Please wait…' : mode === 'sign-in' ? 'Sign in' : 'Sign up'}
+          </button>
+        </form>
+        <button
+          onClick={() => setMode(mode === 'sign-in' ? 'sign-up' : 'sign-in')}
+          style={{ ...buttonStyle('ghost'), marginTop: 16, color: color.primary, fontWeight: 600 }}
+        >
+          {mode === 'sign-in' ? 'Need an account? Sign up' : 'Already have an account? Sign in'}
         </button>
-      </form>
-      <button
-        onClick={() => setMode(mode === 'sign-in' ? 'sign-up' : 'sign-in')}
-        style={{ marginTop: 12, background: 'none', border: 'none', color: '#2563eb', cursor: 'pointer', padding: 0 }}
-      >
-        {mode === 'sign-in' ? "Need an account? Sign up" : 'Already have an account? Sign in'}
-      </button>
+      </div>
     </div>
   );
 }

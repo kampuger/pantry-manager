@@ -8,8 +8,15 @@ import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/lib/AuthProvider';
 import { useHousehold } from '@/lib/useHousehold';
 import { CreateHouseholdPrompt } from '@/components/CreateHouseholdPrompt';
+import { color, cardStyle, inputStyle, buttonStyle, labelStyle } from '@/lib/theme';
 
 type GroceryListEntryRow = Database['public']['Tables']['grocery_list_entries']['Row'];
+
+const PRIORITY_COLOR: Record<string, string> = {
+  High: color.destructive,
+  Medium: color.warning,
+  Low: color.success,
+};
 
 function DemoShoppingList() {
   return (
@@ -17,26 +24,17 @@ function DemoShoppingList() {
       {shoppingSeed.map((item) => (
         <div
           key={item.id}
-          style={{
-            border: '1px solid #e2e8f0',
-            borderRadius: 12,
-            padding: 16,
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-          }}
+          style={{ ...cardStyle, padding: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
         >
           <div>
             <div style={{ textDecoration: item.checked ? 'line-through' : 'none', fontWeight: 600 }}>{item.name}</div>
-            <div style={{ color: '#64748b' }}>
-              {item.quantity} • {item.category}
+            <div style={{ color: color.mutedForeground, fontSize: 14 }}>
+              {item.quantity} · {item.category}
             </div>
           </div>
           <div style={{ textAlign: 'right' }}>
-            <div style={{ fontWeight: 600 }}>₱{item.estimatedCost}</div>
-            <div style={{ color: item.priority === 'High' ? '#dc2626' : item.priority === 'Medium' ? '#d97706' : '#15803d' }}>
-              {item.priority}
-            </div>
+            <div style={{ fontWeight: 700 }}>₱{item.estimatedCost}</div>
+            <div style={{ color: PRIORITY_COLOR[item.priority], fontSize: 13, fontWeight: 600 }}>{item.priority}</div>
           </div>
         </div>
       ))}
@@ -83,22 +81,13 @@ function AddEntryForm({
   return (
     <form
       onSubmit={handleSubmit}
-      style={{
-        display: 'flex',
-        flexWrap: 'wrap',
-        gap: 8,
-        alignItems: 'end',
-        marginTop: 20,
-        padding: 16,
-        border: '1px solid #e2e8f0',
-        borderRadius: 12,
-      }}
+      style={{ ...cardStyle, display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'end', marginTop: 20, padding: 20 }}
     >
-      <label style={{ display: 'grid', gap: 4 }}>
+      <label style={{ ...labelStyle, flex: '1 1 160px' }}>
         Item
-        <input required value={name} onChange={(e) => setName(e.target.value)} style={{ padding: 8 }} />
+        <input required value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} />
       </label>
-      <label style={{ display: 'grid', gap: 4, width: 90 }}>
+      <label style={{ ...labelStyle, width: 110 }}>
         Qty (optional)
         <input
           type="number"
@@ -106,12 +95,12 @@ function AddEntryForm({
           step="any"
           value={quantity}
           onChange={(e) => setQuantity(e.target.value)}
-          style={{ padding: 8 }}
+          style={inputStyle}
         />
       </label>
-      <label style={{ display: 'grid', gap: 4 }}>
+      <label style={labelStyle}>
         Unit (optional)
-        <select value={unit} onChange={(e) => setUnit(e.target.value)} style={{ padding: 8 }}>
+        <select value={unit} onChange={(e) => setUnit(e.target.value)} style={inputStyle}>
           <option value="">—</option>
           {UNIT_OPTIONS.map((u) => (
             <option key={u} value={u}>
@@ -120,17 +109,17 @@ function AddEntryForm({
           ))}
         </select>
       </label>
-      <button type="submit" disabled={submitting} style={{ padding: 8, cursor: 'pointer' }}>
+      <button type="submit" disabled={submitting} style={buttonStyle('primary')}>
         {submitting ? 'Adding…' : 'Add to list'}
       </button>
-      {error && <p style={{ color: '#b91c1c', width: '100%', margin: 0 }}>{error}</p>}
+      {error && <p style={{ color: color.destructive, width: '100%', margin: 0, fontSize: 13 }}>{error}</p>}
     </form>
   );
 }
 
 function RealShoppingList({ entries, onChanged }: { entries: GroceryListEntryRow[]; onChanged: () => void }) {
   if (entries.length === 0) {
-    return <p style={{ marginTop: 20, color: '#64748b' }}>Your shopping list is empty.</p>;
+    return <p style={{ marginTop: 20, color: color.mutedForeground }}>Your shopping list is empty.</p>;
   }
 
   async function toggle(entry: GroceryListEntryRow) {
@@ -148,23 +137,26 @@ function RealShoppingList({ entries, onChanged }: { entries: GroceryListEntryRow
       {entries.map((entry) => (
         <div
           key={entry.id}
-          style={{
-            border: '1px solid #e2e8f0',
-            borderRadius: 12,
-            padding: 16,
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-          }}
+          style={{ ...cardStyle, padding: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
         >
-          <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
-            <input type="checkbox" checked={entry.is_checked} onChange={() => toggle(entry)} />
-            <span style={{ textDecoration: entry.is_checked ? 'line-through' : 'none', color: entry.is_checked ? '#94a3b8' : undefined }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={entry.is_checked}
+              onChange={() => toggle(entry)}
+              style={{ width: 18, height: 18, accentColor: color.primary, cursor: 'pointer' }}
+            />
+            <span
+              style={{
+                textDecoration: entry.is_checked ? 'line-through' : 'none',
+                color: entry.is_checked ? color.mutedForeground : color.foreground,
+              }}
+            >
               {entry.name}
               {entry.quantity != null && ` — ${entry.quantity}${entry.unit ? ` ${entry.unit}` : ''}`}
             </span>
           </label>
-          <button onClick={() => remove(entry)} style={{ cursor: 'pointer', color: '#b91c1c', background: 'none', border: 'none' }}>
+          <button onClick={() => remove(entry)} style={buttonStyle('danger')}>
             Remove
           </button>
         </div>
@@ -198,8 +190,12 @@ export default function ShoppingListPage() {
     return (
       <div>
         <h1>Shopping List</h1>
-        <p style={{ color: '#64748b', marginTop: 8 }}>
-          Viewing demo data — <a href="/login">sign in</a> to see your household&apos;s real shopping list.
+        <p style={{ color: color.mutedForeground, marginTop: 8 }}>
+          Viewing demo data —{' '}
+          <a href="/login" style={{ color: color.primary, fontWeight: 600 }}>
+            sign in
+          </a>{' '}
+          to see your household&apos;s real shopping list.
         </p>
         <DemoShoppingList />
       </div>
@@ -209,7 +205,7 @@ export default function ShoppingListPage() {
   return (
     <div>
       <h1>Shopping List</h1>
-      {membership === 'loading' && <p style={{ marginTop: 20, color: '#64748b' }}>Loading…</p>}
+      {membership === 'loading' && <p style={{ marginTop: 20, color: color.mutedForeground }}>Loading…</p>}
       {membership === null && <CreateHouseholdPrompt onCreate={create} />}
       {membership && membership !== 'loading' && (
         <>
