@@ -1,14 +1,23 @@
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View, Pressable } from 'react-native';
 import { getFreshnessFlag } from '@pantry/core';
 import { budgetSeed, pantrySeed, shoppingSeed } from '../data/seed';
+import { useAuth } from '../lib/AuthProvider';
 
 export function DashboardScreen() {
+  const { session, signOut } = useAuth();
   const expiringCount = pantrySeed.filter((item) => item.status === 'flagged' || getFreshnessFlag(item.lastRestock, item.category)).length;
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.label}>Overview</Text>
-      <Text style={styles.title}>Dashboard</Text>
+      <View style={styles.headerRow}>
+        <View>
+          <Text style={styles.label}>Overview</Text>
+          <Text style={styles.title}>Dashboard</Text>
+        </View>
+        <Pressable onPress={() => signOut()}>
+          <Text style={styles.signOut}>Sign out{session?.user.email ? ` (${session.user.email})` : ''}</Text>
+        </Pressable>
+      </View>
 
       <View style={styles.cardGrid}>
         {[
@@ -41,6 +50,8 @@ export function DashboardScreen() {
 
 const styles = StyleSheet.create({
   container: { padding: 20, gap: 18 },
+  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  signOut: { color: '#2563eb', fontSize: 12, maxWidth: 140, textAlign: 'right' },
   label: { color: '#64748b', fontSize: 12, letterSpacing: 1.2, textTransform: 'uppercase' },
   title: { fontSize: 32, fontWeight: '700', marginTop: 4 },
   cardGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },

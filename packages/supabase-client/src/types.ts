@@ -4,6 +4,38 @@
 export interface Database {
   public: {
     Tables: {
+      households: {
+        Row: {
+          id: string;
+          name: string;
+          weekly_shopping_day: number | null;
+          created_by: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: Partial<Database['public']['Tables']['households']['Row']> & {
+          name: string;
+          created_by: string;
+        };
+        Update: Partial<Database['public']['Tables']['households']['Row']>;
+        Relationships: [];
+      };
+      household_members: {
+        Row: {
+          id: string;
+          household_id: string;
+          user_id: string;
+          role: 'OWNER' | 'ADMIN' | 'MEMBER';
+          joined_at: string;
+        };
+        Insert: Partial<Database['public']['Tables']['household_members']['Row']> & {
+          household_id: string;
+          user_id: string;
+          role: 'OWNER' | 'ADMIN' | 'MEMBER';
+        };
+        Update: Partial<Database['public']['Tables']['household_members']['Row']>;
+        Relationships: [];
+      };
       pantry_items: {
         Row: {
           id: string;
@@ -31,6 +63,7 @@ export interface Database {
           unit: string;
         };
         Update: Partial<Database['public']['Tables']['pantry_items']['Row']>;
+        Relationships: [];
       };
       inventory_movement_logs: {
         Row: {
@@ -52,7 +85,13 @@ export interface Database {
           quantity_delta: number;
         };
         Update: Partial<Database['public']['Tables']['inventory_movement_logs']['Row']>;
+        Relationships: [];
       };
     };
+    // supabase-js's GenericSchema constraint requires these keys to be present
+    // (even empty) for its generic table-typing to activate at all — without
+    // them, every `.from(...)` call silently degenerates to `never`.
+    Views: Record<string, never>;
+    Functions: Record<string, never>;
   };
 }
