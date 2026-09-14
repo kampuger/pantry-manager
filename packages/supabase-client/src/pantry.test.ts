@@ -1,4 +1,4 @@
-import { addPantryItem } from './pantry';
+import { addPantryItem, updatePantryItem } from './pantry';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
@@ -109,5 +109,23 @@ describe('addPantryItem', () => {
         isProduce: false,
       })
     ).rejects.toThrow('insert failed');
+  });
+});
+
+describe('updatePantryItem', () => {
+  it('sends only the provided fields and returns the updated row', async () => {
+    const row = { id: 'item-1', name: 'Whole Milk', is_produce: false };
+    const client = fakePantryClient({ update: async () => ({ data: row, error: null }) });
+
+    const result = await updatePantryItem(client, 'item-1', { name: 'Whole Milk', isProduce: false });
+
+    expect(result).toEqual(row);
+    expect(client.lastPayload).toEqual({ name: 'Whole Milk', is_produce: false });
+  });
+
+  it('throws when the update errors', async () => {
+    const client = fakePantryClient({ update: async () => ({ data: null, error: new Error('update failed') }) });
+
+    await expect(updatePantryItem(client, 'item-1', { name: 'x' })).rejects.toThrow('update failed');
   });
 });

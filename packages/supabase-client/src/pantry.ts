@@ -39,3 +39,40 @@ export async function addPantryItem(
   if (error) throw error;
   return data;
 }
+
+export interface UpdatePantryItemInput {
+  name?: string;
+  quantity?: number;
+  unit?: string;
+  storageLocation?: string;
+  isProduce?: boolean;
+  expirationDate?: string | null;
+  notifyDaysBeforeExpiry?: number | null;
+}
+
+export async function updatePantryItem(
+  client: SupabaseClient<Database>,
+  itemId: string,
+  input: UpdatePantryItemInput
+): Promise<PantryItemRow> {
+  const changes: Database['public']['Tables']['pantry_items']['Update'] = {};
+  if (input.name !== undefined) changes.name = input.name;
+  if (input.quantity !== undefined) changes.quantity = input.quantity;
+  if (input.unit !== undefined) changes.unit = input.unit;
+  if (input.storageLocation !== undefined) changes.storage_location = input.storageLocation;
+  if (input.isProduce !== undefined) changes.is_produce = input.isProduce;
+  if (input.expirationDate !== undefined) changes.expiration_date = input.expirationDate;
+  if (input.notifyDaysBeforeExpiry !== undefined) {
+    changes.notify_days_before_expiry = input.notifyDaysBeforeExpiry;
+  }
+
+  const { data, error } = await client
+    .from('pantry_items')
+    .update(changes)
+    .eq('id', itemId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
