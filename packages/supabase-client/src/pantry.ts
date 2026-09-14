@@ -1,12 +1,16 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
+type PantryItemRow = Database['public']['Tables']['pantry_items']['Row'];
+
 export interface NewPantryItemInput {
   name: string;
   quantity: number;
   unit: string;
   storageLocation: string;
+  isProduce: boolean;
   expirationDate?: string | null;
+  notifyDaysBeforeExpiry?: number | null;
 }
 
 export async function addPantryItem(
@@ -14,7 +18,7 @@ export async function addPantryItem(
   householdId: string,
   userId: string,
   input: NewPantryItemInput
-): Promise<Database['public']['Tables']['pantry_items']['Row']> {
+): Promise<PantryItemRow> {
   const { data, error } = await client
     .from('pantry_items')
     .insert({
@@ -24,7 +28,10 @@ export async function addPantryItem(
       quantity: input.quantity,
       unit: input.unit,
       storage_location: input.storageLocation,
+      is_produce: input.isProduce,
+      purchase_date: new Date().toISOString().slice(0, 10),
       expiration_date: input.expirationDate ?? null,
+      notify_days_before_expiry: input.notifyDaysBeforeExpiry ?? null,
     })
     .select()
     .single();

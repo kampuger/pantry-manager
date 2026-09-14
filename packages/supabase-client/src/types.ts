@@ -46,6 +46,7 @@ export interface Database {
           quantity: number;
           unit: string;
           storage_location: string;
+          is_produce: boolean;
           purchase_date: string | null;
           expiration_date: string | null;
           purchase_price: number | null;
