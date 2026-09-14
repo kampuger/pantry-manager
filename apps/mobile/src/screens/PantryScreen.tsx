@@ -17,6 +17,7 @@ import { CreateHouseholdPrompt } from '../components/CreateHouseholdPrompt';
 import { Badge } from '../components/Badge';
 import { ItemForm, type ItemFormValues } from '../components/pantry/ItemForm';
 import { PantryLocationGroup } from '../components/pantry/PantryLocationGroup';
+import { NotificationPrefsModal } from '../components/pantry/NotificationPrefsModal';
 import { color, cardStyle, font } from '../lib/theme';
 
 type PantryItemRow = Database['public']['Tables']['pantry_items']['Row'];
@@ -66,6 +67,7 @@ export function PantryScreen() {
   const { membership, create } = useHousehold();
   const [items, setItems] = useState<PantryItemRow[]>([]);
   const [editingItem, setEditingItem] = useState<PantryItemRow | null>(null);
+  const [showPrefs, setShowPrefs] = useState(false);
 
   const refreshItems = useCallback((householdId: string) => {
     supabase
@@ -147,6 +149,11 @@ export function PantryScreen() {
     <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
       <View style={styles.topHeaderRow}>
         <Text style={styles.title}>Pantry Inventory</Text>
+        {membership && membership !== 'loading' && (
+          <Pressable onPress={() => setShowPrefs(true)}>
+            <Text style={styles.gearIcon}>⚙️</Text>
+          </Pressable>
+        )}
       </View>
       {membership === 'loading' && <ActivityIndicator color={color.primary} />}
       {membership === null && <CreateHouseholdPrompt onCreate={create} />}
@@ -184,6 +191,11 @@ export function PantryScreen() {
               onExpired={(item) => handleArchive(item, 'SPOILED_DISCARDED')}
             />
           ))}
+          <NotificationPrefsModal
+            householdId={membership.householdId}
+            visible={showPrefs}
+            onClose={() => setShowPrefs(false)}
+          />
         </>
       )}
     </ScrollView>
@@ -194,6 +206,7 @@ const styles = StyleSheet.create({
   screen: { backgroundColor: color.background },
   container: { padding: 20, gap: 12 },
   topHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  gearIcon: { fontSize: 20 },
   title: { fontSize: 26, fontFamily: font.bold, color: color.foreground, marginBottom: 8 },
   itemCard: { ...cardStyle, padding: 16, gap: 6 },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
