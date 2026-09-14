@@ -1,4 +1,4 @@
-import { addPantryItem, updatePantryItem, archivePantryItem } from './pantry';
+import { addPantryItem } from './pantry';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
