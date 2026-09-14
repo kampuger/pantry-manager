@@ -1584,17 +1584,26 @@ Add state alongside `editingItem`:
 const [showPrefs, setShowPrefs] = useState(false);
 ```
 
-Replace `<h1>Pantry Inventory</h1>` with:
+**Note:** `<h1>Pantry Inventory</h1>` appears twice in Task 8's `page.tsx` — once in the signed-out demo branch, once in the signed-in branch. Only change the **signed-in** one (the one immediately followed by the `{membership === 'loading' && ...}` line). Replace this exact block:
 ```tsx
-<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-  <h1>Pantry Inventory</h1>
-  {membership && membership !== 'loading' && (
-    <button onClick={() => setShowPrefs(true)} style={buttonStyle('ghost')} aria-label="Notification preferences">
-      ⚙️ Notifications
-    </button>
-  )}
-</div>
+    <div>
+      <h1>Pantry Inventory</h1>
+      {membership === 'loading' && <p style={{ marginTop: 20, color: color.mutedForeground }}>Loading…</p>}
 ```
+with:
+```tsx
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h1>Pantry Inventory</h1>
+        {membership && membership !== 'loading' && (
+          <button onClick={() => setShowPrefs(true)} style={buttonStyle('ghost')} aria-label="Notification preferences">
+            ⚙️ Notifications
+          </button>
+        )}
+      </div>
+      {membership === 'loading' && <p style={{ marginTop: 20, color: color.mutedForeground }}>Loading…</p>}
+```
+Leave the signed-out branch's `<h1>Pantry Inventory</h1>` (inside the "Viewing demo data" block) untouched.
 
 Add just before the closing `</>` of the signed-in branch (after the `editingItem` modal block):
 ```tsx
