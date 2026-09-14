@@ -1,4 +1,4 @@
-import { addPantryItem, updatePantryItem } from './pantry';
+import { addPantryItem, updatePantryItem, archivePantryItem } from './pantry';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
@@ -127,5 +127,65 @@ describe('updatePantryItem', () => {
     const client = fakePantryClient({ update: async () => ({ data: null, error: new Error('update failed') }) });
 
     await expect(updatePantryItem(client, 'item-1', { name: 'x' })).rejects.toThrow('update failed');
+  });
+});
+
+describe('archivePantryItem', () => {
+  it('archives the item and logs the movement event', async () => {
+    const client = fakePantryClient({
+      updateNoSelect: async () => ({ error: null }),
+      logInsert: async () => ({ error: null }),
+    });
+
+    await archivePantryItem(client, {
+      itemId: 'item-1',
+      householdId: 'house-1',
+      quantity: 2,
+      eventType: 'CONSUMED',
+      userId: 'user-1',
+    });
+
+    expect(client.lastPayload).toEqual({ is_archived: true });
+    expect(client.lastLogPayload).toEqual({
+      household_id: 'house-1',
+      pantry_item_id: 'item-1',
+      event_type: 'CONSUMED',
+      quantity_delta: -2,
+      triggered_by: 'user-1',
+    });
+  });
+
+  it('throws and skips the log when the archive update errors', async () => {
+    const client = fakePantryClient({
+      updateNoSelect: async () => ({ error: new Error('archive failed') }),
+      logInsert: async () => ({ error: null }),
+    });
+
+    await expect(
+      archivePantryItem(client, {
+        itemId: 'item-1',
+        householdId: 'house-1',
+        quantity: 1,
+        eventType: 'SPOILED_DISCARDED',
+        userId: 'user-1',
+      })
+    ).rejects.toThrow('archive failed');
+  });
+
+  it('throws when the movement log insert errors', async () => {
+    const client = fakePantryClient({
+      updateNoSelect: async () => ({ error: null }),
+      logInsert: async () => ({ error: new Error('log failed') }),
+    });
+
+    await expect(
+      archivePantryItem(client, {
+        itemId: 'item-1',
+        householdId: 'house-1',
+        quantity: 1,
+        eventType: 'CONSUMED',
+        userId: 'user-1',
+      })
+    ).rejects.toThrow('log failed');
   });
 });

@@ -76,3 +76,35 @@ export async function updatePantryItem(
   if (error) throw error;
   return data;
 }
+
+export type ArchiveEventType = 'CONSUMED' | 'SPOILED_DISCARDED';
+
+export interface ArchivePantryItemInput {
+  itemId: string;
+  householdId: string;
+  quantity: number;
+  eventType: ArchiveEventType;
+  userId: string;
+}
+
+export async function archivePantryItem(
+  client: SupabaseClient<Database>,
+  input: ArchivePantryItemInput
+): Promise<void> {
+  const { error: updateError } = await client
+    .from('pantry_items')
+    .update({ is_archived: true })
+    .eq('id', input.itemId);
+
+  if (updateError) throw updateError;
+
+  const { error: logError } = await client.from('inventory_movement_logs').insert({
+    household_id: input.householdId,
+    pantry_item_id: input.itemId,
+    event_type: input.eventType,
+    quantity_delta: -Math.abs(input.quantity),
+    triggered_by: input.userId,
+  });
+
+  if (logError) throw logError;
+}
