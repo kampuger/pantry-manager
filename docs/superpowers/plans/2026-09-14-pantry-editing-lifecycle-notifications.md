@@ -348,7 +348,7 @@ In `packages/supabase-client/src/types.ts`, add `is_produce: boolean;` to the `R
 Replace the full contents of `packages/supabase-client/src/pantry.test.ts` with:
 
 ```ts
-import { addPantryItem, updatePantryItem, archivePantryItem } from './pantry';
+import { addPantryItem } from './pantry';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
@@ -544,7 +544,13 @@ git commit -m "feat(supabase-client): add produce flag and notify override to ad
 
 - [ ] **Step 1: Write the failing tests**
 
-Append to `packages/supabase-client/src/pantry.test.ts`:
+First, update the top import line in `packages/supabase-client/src/pantry.test.ts` to also pull in `updatePantryItem`:
+
+```ts
+import { addPantryItem, updatePantryItem } from './pantry';
+```
+
+Then append to the same file:
 
 ```ts
 describe('updatePantryItem', () => {
@@ -639,7 +645,13 @@ git commit -m "feat(supabase-client): add updatePantryItem"
 
 - [ ] **Step 1: Write the failing tests**
 
-Append to `packages/supabase-client/src/pantry.test.ts`:
+First, update the top import line in `packages/supabase-client/src/pantry.test.ts` to also pull in `archivePantryItem`:
+
+```ts
+import { addPantryItem, updatePantryItem, archivePantryItem } from './pantry';
+```
+
+Then append to the same file:
 
 ```ts
 describe('archivePantryItem', () => {
