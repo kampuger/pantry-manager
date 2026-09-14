@@ -17,6 +17,7 @@ import { useHousehold } from '@/lib/useHousehold';
 import { CreateHouseholdPrompt } from '@/components/CreateHouseholdPrompt';
 import { ItemForm, type ItemFormValues } from '@/components/pantry/ItemForm';
 import { PantryLocationGroup } from '@/components/pantry/PantryLocationGroup';
+import { NotificationPrefsModal } from '@/components/pantry/NotificationPrefsModal';
 import { color, cardStyle, buttonStyle, badgeStyle } from '@/lib/theme';
 
 type PantryItemRow = Database['public']['Tables']['pantry_items']['Row'];
@@ -70,6 +71,7 @@ export default function PantryPage() {
   const { membership, create } = useHousehold();
   const [items, setItems] = useState<PantryItemRow[]>([]);
   const [editingItem, setEditingItem] = useState<PantryItemRow | null>(null);
+  const [showPrefs, setShowPrefs] = useState(false);
 
   const refreshItems = useCallback((householdId: string) => {
     supabase
@@ -155,7 +157,14 @@ export default function PantryPage() {
 
   return (
     <div>
-      <h1>Pantry Inventory</h1>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h1>Pantry Inventory</h1>
+        {membership && membership !== 'loading' && (
+          <button onClick={() => setShowPrefs(true)} style={buttonStyle('ghost')} aria-label="Notification preferences">
+            ⚙️ Notifications
+          </button>
+        )}
+      </div>
       {membership === 'loading' && <p style={{ marginTop: 20, color: color.mutedForeground }}>Loading…</p>}
       {membership === null && <CreateHouseholdPrompt onCreate={create} />}
       {membership && membership !== 'loading' && (
@@ -207,6 +216,9 @@ export default function PantryPage() {
                 />
               </div>
             </div>
+          )}
+          {showPrefs && membership && (
+            <NotificationPrefsModal householdId={membership.householdId} onClose={() => setShowPrefs(false)} />
           )}
         </>
       )}
