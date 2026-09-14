@@ -18,7 +18,7 @@ import { Badge } from '../components/Badge';
 import { ItemForm, type ItemFormValues } from '../components/pantry/ItemForm';
 import { PantryLocationGroup } from '../components/pantry/PantryLocationGroup';
 import { NotificationPrefsModal } from '../components/pantry/NotificationPrefsModal';
-import { color, cardStyle, font } from '../lib/theme';
+import { color, radius, cardStyle, font } from '../lib/theme';
 
 type PantryItemRow = Database['public']['Tables']['pantry_items']['Row'];
 
@@ -150,7 +150,10 @@ export function PantryScreen() {
       <View style={styles.topHeaderRow}>
         <Text style={styles.title}>Pantry Inventory</Text>
         {membership && membership !== 'loading' && (
-          <Pressable onPress={() => setShowPrefs(true)}>
+          <Pressable
+            onPress={() => setShowPrefs(true)}
+            style={({ pressed }) => [styles.gearButton, pressed && styles.gearButtonPressed]}
+          >
             <Text style={styles.gearIcon}>⚙️</Text>
           </Pressable>
         )}
@@ -178,7 +181,7 @@ export function PantryScreen() {
           ) : (
             <ItemForm submitLabel="Add item" onSubmit={handleAdd} />
           )}
-          {items.length === 0 && <Text style={styles.meta}>No pantry items yet.</Text>}
+          {items.length === 0 && <Text style={styles.emptyState}>No pantry items yet.</Text>}
           {groups.map((group) => (
             <PantryLocationGroup
               key={group.location}
@@ -204,12 +207,43 @@ export function PantryScreen() {
 
 const styles = StyleSheet.create({
   screen: { backgroundColor: color.background },
-  container: { padding: 20, gap: 12 },
-  topHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  gearIcon: { fontSize: 20 },
-  title: { fontSize: 26, fontFamily: font.bold, color: color.foreground, marginBottom: 8 },
-  itemCard: { ...cardStyle, padding: 16, gap: 6 },
-  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  name: { fontSize: 16, fontFamily: font.semibold, color: color.foreground },
+  container: { padding: 20, paddingBottom: 40, gap: 14 },
+  topHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 6,
+  },
+  gearButton: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.pill,
+    backgroundColor: color.card,
+    borderWidth: 1,
+    borderColor: color.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  gearButtonPressed: { backgroundColor: color.muted },
+  gearIcon: { fontSize: 18 },
+  title: { flexShrink: 1, fontSize: 26, fontFamily: font.bold, color: color.foreground, letterSpacing: -0.5 },
+  itemCard: { ...cardStyle, paddingVertical: 14, paddingHorizontal: 16, gap: 8 },
+  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 },
+  name: { flex: 1, fontSize: 15, lineHeight: 21, fontFamily: font.semibold, color: color.foreground },
   meta: { color: color.mutedForeground, fontSize: 13, fontFamily: font.regular },
+  emptyState: {
+    backgroundColor: color.muted,
+    borderWidth: 1,
+    borderColor: color.border,
+    borderStyle: 'dashed',
+    borderRadius: radius.md,
+    paddingVertical: 24,
+    paddingHorizontal: 16,
+    textAlign: 'center',
+    color: color.mutedForeground,
+    fontSize: 13,
+    fontFamily: font.regular,
+    overflow: 'hidden',
+  },
 });

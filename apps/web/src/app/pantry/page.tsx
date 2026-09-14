@@ -18,7 +18,7 @@ import { CreateHouseholdPrompt } from '@/components/CreateHouseholdPrompt';
 import { ItemForm, type ItemFormValues } from '@/components/pantry/ItemForm';
 import { PantryLocationGroup } from '@/components/pantry/PantryLocationGroup';
 import { NotificationPrefsModal } from '@/components/pantry/NotificationPrefsModal';
-import { color, cardStyle, buttonStyle, badgeStyle } from '@/lib/theme';
+import { color, radius, cardStyle, buttonStyle, badgeStyle } from '@/lib/theme';
 
 type PantryItemRow = Database['public']['Tables']['pantry_items']['Row'];
 
@@ -37,12 +37,12 @@ function daysUntil(dateStr: string | null): number | null {
 }
 
 function ItemCard({ children }: { children: React.ReactNode }) {
-  return <div style={{ ...cardStyle, padding: 16, display: 'grid', gap: 6 }}>{children}</div>;
+  return <div style={{ ...cardStyle, padding: '14px 16px', display: 'grid', gap: 8 }}>{children}</div>;
 }
 
 function DemoPantryList() {
   return (
-    <div style={{ display: 'grid', gap: 12, marginTop: 20 }}>
+    <div style={{ display: 'grid', gap: 10, marginTop: 24 }}>
       {pantrySeed.map((item) => {
         const flagged = item.status === 'flagged' || getFreshnessFlag(item.lastRestock, item.category);
         const tone = flagged ? 'destructive' : item.status === 'low' ? 'warning' : 'success';
@@ -92,8 +92,8 @@ export default function PantryPage() {
   if (!session) {
     return (
       <div>
-        <h1>Pantry Inventory</h1>
-        <p style={{ color: color.mutedForeground, marginTop: 8 }}>
+        <h1 style={{ fontSize: 28, margin: 0, letterSpacing: '-0.02em' }}>Pantry Inventory</h1>
+        <p style={{ color: color.mutedForeground, marginTop: 8, fontSize: 14 }}>
           Viewing demo data —{' '}
           <a href="/login" style={{ color: color.primary, fontWeight: 600 }}>
             sign in
@@ -157,10 +157,28 @@ export default function PantryPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h1>Pantry Inventory</h1>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: 12,
+          flexWrap: 'wrap',
+        }}
+      >
+        <h1 style={{ fontSize: 28, margin: 0, letterSpacing: '-0.02em' }}>Pantry Inventory</h1>
         {membership && membership !== 'loading' && (
-          <button onClick={() => setShowPrefs(true)} style={buttonStyle('ghost')} aria-label="Notification preferences">
+          <button
+            onClick={() => setShowPrefs(true)}
+            style={{
+              ...buttonStyle('secondary'),
+              padding: '8px 14px',
+              borderRadius: radius.pill,
+              color: color.mutedForeground,
+              whiteSpace: 'nowrap',
+            }}
+            aria-label="Notification preferences"
+          >
             ⚙️ Notifications
           </button>
         )}
@@ -169,10 +187,27 @@ export default function PantryPage() {
       {membership === null && <CreateHouseholdPrompt onCreate={create} />}
       {membership && membership !== 'loading' && (
         <>
-          <div style={{ marginTop: 20 }}>
+          <div style={{ marginTop: 24 }}>
             <ItemForm submitLabel="Add item" onSubmit={handleAdd} />
           </div>
-          {items.length === 0 && <p style={{ marginTop: 20, color: color.mutedForeground }}>No pantry items yet.</p>}
+          {items.length === 0 && (
+            <p
+              style={{
+                ...cardStyle,
+                borderStyle: 'dashed',
+                boxShadow: 'none',
+                background: color.muted,
+                marginTop: 24,
+                marginBottom: 0,
+                padding: '24px 16px',
+                textAlign: 'center',
+                color: color.mutedForeground,
+                fontSize: 14,
+              }}
+            >
+              No pantry items yet.
+            </p>
+          )}
           {groups.map((group) => (
             <PantryLocationGroup
               key={group.location}
@@ -192,9 +227,10 @@ export default function PantryPage() {
                 inset: 0,
                 background: 'rgba(15, 23, 42, 0.4)',
                 display: 'flex',
-                alignItems: 'center',
+                alignItems: 'flex-start',
                 justifyContent: 'center',
-                padding: 20,
+                padding: '40px 16px',
+                overflowY: 'auto',
                 zIndex: 50,
               }}
             >
