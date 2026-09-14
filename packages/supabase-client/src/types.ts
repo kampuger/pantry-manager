@@ -9,6 +9,8 @@ export interface Database {
           id: string;
           name: string;
           weekly_shopping_day: number | null;
+          notify_days_produce: number;
+          notify_days_nonproduce: number;
           created_by: string;
           created_at: string;
           updated_at: string;

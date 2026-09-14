@@ -1,4 +1,4 @@
-import { getMyHousehold, createHousehold } from './household';
+import { getMyHousehold, createHousehold, getHouseholdNotificationPrefs, updateHouseholdNotificationPrefs } from './household';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
@@ -104,5 +104,58 @@ describe('createHousehold', () => {
     await expect(createHousehold(client, 'user-1', 'My Household')).rejects.toThrow(
       'member insert failed'
     );
+  });
+});
+
+describe('getHouseholdNotificationPrefs', () => {
+  function fakeClient(result: { data: any; error: any }): SupabaseClient<Database> {
+    const from = (table: string): any => {
+      if (table !== 'households') throw new Error(`Unexpected table: ${table}`);
+      return { select: () => ({ eq: () => ({ single: async () => result }) }) };
+    };
+    return { from } as unknown as SupabaseClient<Database>;
+  }
+
+  it('returns the household notification defaults', async () => {
+    const client = fakeClient({ data: { notify_days_produce: 2, notify_days_nonproduce: 7 }, error: null });
+    expect(await getHouseholdNotificationPrefs(client, 'house-1')).toEqual({
+      notifyDaysProduce: 2,
+      notifyDaysNonproduce: 7,
+    });
+  });
+
+  it('throws when the query errors', async () => {
+    const client = fakeClient({ data: null, error: new Error('boom') });
+    await expect(getHouseholdNotificationPrefs(client, 'house-1')).rejects.toThrow('boom');
+  });
+});
+
+describe('updateHouseholdNotificationPrefs', () => {
+  function fakeClient(error: any, capture: { payload?: any }): SupabaseClient<Database> {
+    const from = (table: string): any => {
+      if (table !== 'households') throw new Error(`Unexpected table: ${table}`);
+      return {
+        update: (payload: any) => {
+          capture.payload = payload;
+          return { eq: () => ({ then: (resolve: any) => Promise.resolve({ error }).then(resolve) }) };
+        },
+      };
+    };
+    return { from } as unknown as SupabaseClient<Database>;
+  }
+
+  it('writes both preference fields', async () => {
+    const capture: { payload?: any } = {};
+    const client = fakeClient(null, capture);
+    await updateHouseholdNotificationPrefs(client, 'house-1', { notifyDaysProduce: 3, notifyDaysNonproduce: 10 });
+    expect(capture.payload).toEqual({ notify_days_produce: 3, notify_days_nonproduce: 10 });
+  });
+
+  it('throws when the update errors', async () => {
+    const capture: { payload?: any } = {};
+    const client = fakeClient(new Error('update failed'), capture);
+    await expect(
+      updateHouseholdNotificationPrefs(client, 'house-1', { notifyDaysProduce: 3, notifyDaysNonproduce: 10 })
+    ).rejects.toThrow('update failed');
   });
 });

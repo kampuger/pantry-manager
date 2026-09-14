@@ -44,3 +44,41 @@ export async function createHousehold(
 
   return { householdId: household.id, role: 'OWNER' };
 }
+
+export interface NotificationPreferences {
+  notifyDaysProduce: number;
+  notifyDaysNonproduce: number;
+}
+
+export async function getHouseholdNotificationPrefs(
+  client: SupabaseClient<Database>,
+  householdId: string
+): Promise<NotificationPreferences> {
+  const { data, error } = await client
+    .from('households')
+    .select('notify_days_produce, notify_days_nonproduce')
+    .eq('id', householdId)
+    .single();
+
+  if (error) throw error;
+  return {
+    notifyDaysProduce: data.notify_days_produce,
+    notifyDaysNonproduce: data.notify_days_nonproduce,
+  };
+}
+
+export async function updateHouseholdNotificationPrefs(
+  client: SupabaseClient<Database>,
+  householdId: string,
+  prefs: NotificationPreferences
+): Promise<void> {
+  const { error } = await client
+    .from('households')
+    .update({
+      notify_days_produce: prefs.notifyDaysProduce,
+      notify_days_nonproduce: prefs.notifyDaysNonproduce,
+    })
+    .eq('id', householdId);
+
+  if (error) throw error;
+}
