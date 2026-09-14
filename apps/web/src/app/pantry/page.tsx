@@ -2,23 +2,31 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { getFreshnessFlag } from '@pantry/core';
-import { getExpiryBadgeStatus, type ExpiryBadgeStatus } from '@pantry/ui';
-import { addPantryItem, UNIT_OPTIONS, STORAGE_LOCATION_OPTIONS } from '@pantry/supabase-client';
-import type { Database } from '@pantry/supabase-client';
+import { groupItemsByLocation } from '@pantry/ui';
+import {
+  addPantryItem,
+  updatePantryItem,
+  archivePantryItem,
+  STORAGE_LOCATION_OPTIONS,
+  type Database,
+} from '@pantry/supabase-client';
 import { pantrySeed } from '@/data/seed';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/lib/AuthProvider';
 import { useHousehold } from '@/lib/useHousehold';
 import { CreateHouseholdPrompt } from '@/components/CreateHouseholdPrompt';
-import { color, cardStyle, inputStyle, buttonStyle, badgeStyle, labelStyle } from '@/lib/theme';
+import { ItemForm, type ItemFormValues } from '@/components/pantry/ItemForm';
+import { PantryLocationGroup } from '@/components/pantry/PantryLocationGroup';
+import { color, cardStyle, buttonStyle, badgeStyle } from '@/lib/theme';
 
 type PantryItemRow = Database['public']['Tables']['pantry_items']['Row'];
 
-const EXPIRY_TONE: Record<ExpiryBadgeStatus, 'destructive' | 'warning' | 'success' | 'muted'> = {
-  critical: 'destructive',
-  warning: 'warning',
-  ok: 'success',
-  unknown: 'muted',
+const LOCATION_META: Record<string, { icon: string; label: string }> = {
+  FRIDGE: { icon: '🧊', label: 'Fridge' },
+  FREEZER: { icon: '❄️', label: 'Freezer' },
+  PANTRY: { icon: '🥫', label: 'Pantry' },
+  COUNTER: { icon: '🍽️', label: 'Counter' },
+  OTHER: { icon: '📦', label: 'Other' },
 };
 
 function daysUntil(dateStr: string | null): number | null {
@@ -57,130 +65,11 @@ function DemoPantryList() {
   );
 }
 
-function AddItemForm({
-  householdId,
-  userId,
-  onAdded,
-}: {
-  householdId: string;
-  userId: string;
-  onAdded: () => void;
-}) {
-  const [name, setName] = useState('');
-  const [quantity, setQuantity] = useState('1');
-  const [unit, setUnit] = useState<string>(UNIT_OPTIONS[0]);
-  const [storageLocation, setStorageLocation] = useState<string>(STORAGE_LOCATION_OPTIONS[0]);
-  const [expirationDate, setExpirationDate] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setSubmitting(true);
-    setError(null);
-    try {
-      await addPantryItem(supabase, householdId, userId, {
-        name: name.trim(),
-        quantity: Number(quantity) || 0,
-        unit,
-        storageLocation,
-        expirationDate: expirationDate || null,
-      });
-      setName('');
-      setQuantity('1');
-      setExpirationDate('');
-      onAdded();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add item');
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <form
-      onSubmit={handleSubmit}
-      style={{ ...cardStyle, display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'end', marginTop: 20, padding: 20 }}
-    >
-      <label style={{ ...labelStyle, flex: '1 1 160px' }}>
-        Name
-        <input required value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} />
-      </label>
-      <label style={{ ...labelStyle, width: 90 }}>
-        Qty
-        <input
-          type="number"
-          min="0"
-          step="any"
-          required
-          value={quantity}
-          onChange={(e) => setQuantity(e.target.value)}
-          style={inputStyle}
-        />
-      </label>
-      <label style={labelStyle}>
-        Unit
-        <select value={unit} onChange={(e) => setUnit(e.target.value)} style={inputStyle}>
-          {UNIT_OPTIONS.map((u) => (
-            <option key={u} value={u}>
-              {u}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label style={labelStyle}>
-        Storage
-        <select value={storageLocation} onChange={(e) => setStorageLocation(e.target.value)} style={inputStyle}>
-          {STORAGE_LOCATION_OPTIONS.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label style={labelStyle}>
-        Expires (optional)
-        <input type="date" value={expirationDate} onChange={(e) => setExpirationDate(e.target.value)} style={inputStyle} />
-      </label>
-      <button type="submit" disabled={submitting} style={buttonStyle('primary')}>
-        {submitting ? 'Adding…' : 'Add item'}
-      </button>
-      {error && <p style={{ color: color.destructive, width: '100%', margin: 0, fontSize: 13 }}>{error}</p>}
-    </form>
-  );
-}
-
-function RealPantryList({ items }: { items: PantryItemRow[] }) {
-  if (items.length === 0) {
-    return <p style={{ marginTop: 20, color: color.mutedForeground }}>No pantry items yet.</p>;
-  }
-
-  return (
-    <div style={{ display: 'grid', gap: 12, marginTop: 20 }}>
-      {items.map((item) => {
-        const status = getExpiryBadgeStatus(daysUntil(item.expiration_date));
-
-        return (
-          <ItemCard key={item.id}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <strong>{item.name}</strong>
-              <span style={badgeStyle(EXPIRY_TONE[status])}>{status}</span>
-            </div>
-            <div style={{ color: color.mutedForeground, fontSize: 14 }}>
-              {item.quantity} {item.unit} · {item.storage_location}
-              {item.expiration_date && ` · Expires ${item.expiration_date}`}
-            </div>
-          </ItemCard>
-        );
-      })}
-    </div>
-  );
-}
-
 export default function PantryPage() {
   const { session, loading: authLoading } = useAuth();
   const { membership, create } = useHousehold();
   const [items, setItems] = useState<PantryItemRow[]>([]);
+  const [editingItem, setEditingItem] = useState<PantryItemRow | null>(null);
 
   const refreshItems = useCallback((householdId: string) => {
     supabase
@@ -214,6 +103,56 @@ export default function PantryPage() {
     );
   }
 
+  async function handleAdd(values: ItemFormValues) {
+    if (!membership || membership === 'loading') return;
+    await addPantryItem(supabase, membership.householdId, session!.user.id, {
+      name: values.name,
+      quantity: values.quantity,
+      unit: values.unit,
+      storageLocation: values.storageLocation,
+      isProduce: values.isProduce,
+      expirationDate: values.expirationDate,
+      notifyDaysBeforeExpiry: values.notifyDaysOverride,
+    });
+    refreshItems(membership.householdId);
+  }
+
+  async function handleEditSave(values: ItemFormValues) {
+    if (!editingItem || !membership || membership === 'loading') return;
+    await updatePantryItem(supabase, editingItem.id, {
+      name: values.name,
+      quantity: values.quantity,
+      unit: values.unit,
+      storageLocation: values.storageLocation,
+      isProduce: values.isProduce,
+      expirationDate: values.expirationDate,
+      notifyDaysBeforeExpiry: values.notifyDaysOverride,
+    });
+    setEditingItem(null);
+    refreshItems(membership.householdId);
+  }
+
+  async function handleArchive(item: PantryItemRow, eventType: 'CONSUMED' | 'SPOILED_DISCARDED') {
+    if (!membership || membership === 'loading') return;
+    await archivePantryItem(supabase, {
+      itemId: item.id,
+      householdId: membership.householdId,
+      quantity: item.quantity,
+      eventType,
+      userId: session!.user.id,
+    });
+    refreshItems(membership.householdId);
+  }
+
+  const groups = groupItemsByLocation(
+    items.map((item) => ({
+      id: item.id,
+      storageLocation: item.storage_location,
+      daysUntilExpiry: daysUntil(item.expiration_date),
+    })),
+    STORAGE_LOCATION_OPTIONS
+  );
+
   return (
     <div>
       <h1>Pantry Inventory</h1>
@@ -221,12 +160,54 @@ export default function PantryPage() {
       {membership === null && <CreateHouseholdPrompt onCreate={create} />}
       {membership && membership !== 'loading' && (
         <>
-          <AddItemForm
-            householdId={membership.householdId}
-            userId={session.user.id}
-            onAdded={() => refreshItems(membership.householdId)}
-          />
-          <RealPantryList items={items} />
+          <div style={{ marginTop: 20 }}>
+            <ItemForm submitLabel="Add item" onSubmit={handleAdd} />
+          </div>
+          {items.length === 0 && <p style={{ marginTop: 20, color: color.mutedForeground }}>No pantry items yet.</p>}
+          {groups.map((group) => (
+            <PantryLocationGroup
+              key={group.location}
+              icon={LOCATION_META[group.location].icon}
+              label={LOCATION_META[group.location].label}
+              expiringSoonCount={group.expiringSoonCount}
+              items={items.filter((item) => group.itemIds.includes(item.id))}
+              onEdit={setEditingItem}
+              onConsumed={(item) => handleArchive(item, 'CONSUMED')}
+              onExpired={(item) => handleArchive(item, 'SPOILED_DISCARDED')}
+            />
+          ))}
+          {editingItem && (
+            <div
+              style={{
+                position: 'fixed',
+                inset: 0,
+                background: 'rgba(15, 23, 42, 0.4)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: 20,
+                zIndex: 50,
+              }}
+            >
+              <div style={{ maxWidth: 640, width: '100%' }}>
+                <ItemForm
+                  submitLabel="Save changes"
+                  onCancel={() => setEditingItem(null)}
+                  initialValues={{
+                    name: editingItem.name,
+                    quantity: editingItem.quantity,
+                    unit: editingItem.unit,
+                    storageLocation: editingItem.storage_location,
+                    isProduce: editingItem.is_produce,
+                    expirationDate: editingItem.expiration_date,
+                    notifyDaysOverride: editingItem.notify_days_before_expiry,
+                    purchaseDate: editingItem.purchase_date,
+                  }}
+                  onSubmit={handleEditSave}
+                />
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>
