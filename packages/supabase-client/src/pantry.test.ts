@@ -170,6 +170,8 @@ describe('archivePantryItem', () => {
         userId: 'user-1',
       })
     ).rejects.toThrow('archive failed');
+
+    expect(client.lastLogPayload).toBeUndefined();
   });
 
   it('throws when the movement log insert errors', async () => {
