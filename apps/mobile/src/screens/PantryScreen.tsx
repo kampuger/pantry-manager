@@ -1,25 +1,32 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, View, ActivityIndicator } from 'react-native';
+import { ScrollView, StyleSheet, Text, View, ActivityIndicator, Pressable } from 'react-native';
 import { getFreshnessFlag } from '@pantry/core';
-import { getExpiryBadgeStatus, type ExpiryBadgeStatus } from '@pantry/ui';
-import { addPantryItem, UNIT_OPTIONS, STORAGE_LOCATION_OPTIONS, type Database } from '@pantry/supabase-client';
+import { groupItemsByLocation } from '@pantry/ui';
+import {
+  addPantryItem,
+  updatePantryItem,
+  archivePantryItem,
+  STORAGE_LOCATION_OPTIONS,
+  type Database,
+} from '@pantry/supabase-client';
 import { pantrySeed } from '../data/seed';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../lib/AuthProvider';
 import { useHousehold } from '../lib/useHousehold';
 import { CreateHouseholdPrompt } from '../components/CreateHouseholdPrompt';
-import { ChipSelect } from '../components/ChipSelect';
 import { Badge } from '../components/Badge';
-import { AppButton } from '../components/AppButton';
-import { color, cardStyle, inputStyle, font } from '../lib/theme';
+import { ItemForm, type ItemFormValues } from '../components/pantry/ItemForm';
+import { PantryLocationGroup } from '../components/pantry/PantryLocationGroup';
+import { color, cardStyle, font } from '../lib/theme';
 
 type PantryItemRow = Database['public']['Tables']['pantry_items']['Row'];
 
-const EXPIRY_TONE: Record<ExpiryBadgeStatus, 'destructive' | 'warning' | 'success' | 'muted'> = {
-  critical: 'destructive',
-  warning: 'warning',
-  ok: 'success',
-  unknown: 'muted',
+const LOCATION_META: Record<string, { icon: string; label: string }> = {
+  FRIDGE: { icon: '🧊', label: 'Fridge' },
+  FREEZER: { icon: '❄️', label: 'Freezer' },
+  PANTRY: { icon: '🥫', label: 'Pantry' },
+  COUNTER: { icon: '🍽️', label: 'Counter' },
+  OTHER: { icon: '📦', label: 'Other' },
 };
 
 function daysUntil(dateStr: string | null): number | null {
@@ -54,95 +61,11 @@ function DemoPantryList() {
   );
 }
 
-function AddItemForm({
-  householdId,
-  userId,
-  onAdded,
-}: {
-  householdId: string;
-  userId: string;
-  onAdded: () => void;
-}) {
-  const [name, setName] = useState('');
-  const [quantity, setQuantity] = useState('1');
-  const [unit, setUnit] = useState<string>(UNIT_OPTIONS[0]);
-  const [storageLocation, setStorageLocation] = useState<string>(STORAGE_LOCATION_OPTIONS[0]);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function handleSubmit() {
-    if (!name.trim()) return;
-    setSubmitting(true);
-    setError(null);
-    try {
-      await addPantryItem(supabase, householdId, userId, {
-        name: name.trim(),
-        quantity: Number(quantity) || 0,
-        unit,
-        storageLocation,
-      });
-      setName('');
-      setQuantity('1');
-      onAdded();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add item');
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <View style={styles.addForm}>
-      <Text style={styles.addFormTitle}>Add item</Text>
-      <TextInput placeholder="Name" value={name} onChangeText={setName} style={inputStyle} />
-      <TextInput
-        placeholder="Quantity"
-        keyboardType="numeric"
-        value={quantity}
-        onChangeText={setQuantity}
-        style={inputStyle}
-      />
-      <Text style={styles.fieldLabel}>Unit</Text>
-      <ChipSelect options={UNIT_OPTIONS} value={unit} onChange={setUnit} />
-      <Text style={styles.fieldLabel}>Storage</Text>
-      <ChipSelect options={STORAGE_LOCATION_OPTIONS} value={storageLocation} onChange={setStorageLocation} />
-      {error && <Text style={styles.error}>{error}</Text>}
-      <AppButton title={submitting ? 'Adding…' : 'Add item'} onPress={handleSubmit} disabled={submitting} />
-    </View>
-  );
-}
-
-function RealPantryList({ items }: { items: PantryItemRow[] }) {
-  if (items.length === 0) {
-    return <Text style={styles.meta}>No pantry items yet.</Text>;
-  }
-
-  return (
-    <>
-      {items.map((item) => {
-        const status = getExpiryBadgeStatus(daysUntil(item.expiration_date));
-
-        return (
-          <View key={item.id} style={styles.itemCard}>
-            <View style={styles.headerRow}>
-              <Text style={styles.name}>{item.name}</Text>
-              <Badge tone={EXPIRY_TONE[status]}>{status}</Badge>
-            </View>
-            <Text style={styles.meta}>
-              {item.quantity} {item.unit} · {item.storage_location}
-              {item.expiration_date && ` · Expires ${item.expiration_date}`}
-            </Text>
-          </View>
-        );
-      })}
-    </>
-  );
-}
-
 export function PantryScreen() {
   const { session } = useAuth();
   const { membership, create } = useHousehold();
   const [items, setItems] = useState<PantryItemRow[]>([]);
+  const [editingItem, setEditingItem] = useState<PantryItemRow | null>(null);
 
   const refreshItems = useCallback((householdId: string) => {
     supabase
@@ -170,19 +93,97 @@ export function PantryScreen() {
     );
   }
 
+  async function handleAdd(values: ItemFormValues) {
+    if (!membership || membership === 'loading') return;
+    await addPantryItem(supabase, membership.householdId, session!.user.id, {
+      name: values.name,
+      quantity: values.quantity,
+      unit: values.unit,
+      storageLocation: values.storageLocation,
+      isProduce: values.isProduce,
+      expirationDate: values.expirationDate,
+      notifyDaysBeforeExpiry: values.notifyDaysOverride,
+    });
+    refreshItems(membership.householdId);
+  }
+
+  async function handleEditSave(values: ItemFormValues) {
+    if (!editingItem || !membership || membership === 'loading') return;
+    await updatePantryItem(supabase, editingItem.id, {
+      name: values.name,
+      quantity: values.quantity,
+      unit: values.unit,
+      storageLocation: values.storageLocation,
+      isProduce: values.isProduce,
+      expirationDate: values.expirationDate,
+      notifyDaysBeforeExpiry: values.notifyDaysOverride,
+    });
+    setEditingItem(null);
+    refreshItems(membership.householdId);
+  }
+
+  async function handleArchive(item: PantryItemRow, eventType: 'CONSUMED' | 'SPOILED_DISCARDED') {
+    if (!membership || membership === 'loading') return;
+    await archivePantryItem(supabase, {
+      itemId: item.id,
+      householdId: membership.householdId,
+      quantity: item.quantity,
+      eventType,
+      userId: session!.user.id,
+    });
+    refreshItems(membership.householdId);
+  }
+
+  const groups = groupItemsByLocation(
+    items.map((item) => ({
+      id: item.id,
+      storageLocation: item.storage_location,
+      daysUntilExpiry: daysUntil(item.expiration_date),
+    })),
+    STORAGE_LOCATION_OPTIONS
+  );
+
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
-      <Text style={styles.title}>Pantry Inventory</Text>
+      <View style={styles.topHeaderRow}>
+        <Text style={styles.title}>Pantry Inventory</Text>
+      </View>
       {membership === 'loading' && <ActivityIndicator color={color.primary} />}
       {membership === null && <CreateHouseholdPrompt onCreate={create} />}
       {membership && membership !== 'loading' && (
         <>
-          <AddItemForm
-            householdId={membership.householdId}
-            userId={session.user.id}
-            onAdded={() => refreshItems(membership.householdId)}
-          />
-          <RealPantryList items={items} />
+          {editingItem ? (
+            <ItemForm
+              submitLabel="Save changes"
+              onCancel={() => setEditingItem(null)}
+              initialValues={{
+                name: editingItem.name,
+                quantity: editingItem.quantity,
+                unit: editingItem.unit,
+                storageLocation: editingItem.storage_location,
+                isProduce: editingItem.is_produce,
+                expirationDate: editingItem.expiration_date,
+                notifyDaysOverride: editingItem.notify_days_before_expiry,
+                purchaseDate: editingItem.purchase_date,
+              }}
+              onSubmit={handleEditSave}
+            />
+          ) : (
+            <ItemForm submitLabel="Add item" onSubmit={handleAdd} />
+          )}
+          {items.length === 0 && <Text style={styles.meta}>No pantry items yet.</Text>}
+          {groups.map((group) => (
+            <PantryLocationGroup
+              key={group.location}
+              icon={LOCATION_META[group.location].icon}
+              label={LOCATION_META[group.location].label}
+              expiringSoonCount={group.expiringSoonCount}
+              items={items.filter((item) => group.itemIds.includes(item.id))}
+              onEdit={setEditingItem}
+              onConsumed={(item) => handleArchive(item, 'CONSUMED')}
+              onExpired={(item) => handleArchive(item, 'SPOILED_DISCARDED')}
+            />
+          ))}
         </>
       )}
     </ScrollView>
@@ -192,13 +193,10 @@ export function PantryScreen() {
 const styles = StyleSheet.create({
   screen: { backgroundColor: color.background },
   container: { padding: 20, gap: 12 },
+  topHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   title: { fontSize: 26, fontFamily: font.bold, color: color.foreground, marginBottom: 8 },
   itemCard: { ...cardStyle, padding: 16, gap: 6 },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   name: { fontSize: 16, fontFamily: font.semibold, color: color.foreground },
   meta: { color: color.mutedForeground, fontSize: 13, fontFamily: font.regular },
-  addForm: { ...cardStyle, padding: 16, gap: 10 },
-  addFormTitle: { fontSize: 15, fontFamily: font.bold, color: color.foreground },
-  fieldLabel: { fontSize: 12, color: color.mutedForeground, fontFamily: font.medium, marginBottom: -4 },
-  error: { color: color.destructive, fontFamily: font.regular, fontSize: 13 },
 });
