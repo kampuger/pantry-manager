@@ -131,13 +131,20 @@ describe('getHouseholdNotificationPrefs', () => {
 });
 
 describe('updateHouseholdNotificationPrefs', () => {
-  function fakeClient(error: any, capture: { payload?: any }): SupabaseClient<Database> {
+  function fakeClient(
+    result: { data: any; error: any },
+    capture: { payload?: any }
+  ): SupabaseClient<Database> {
     const from = (table: string): any => {
       if (table !== 'households') throw new Error(`Unexpected table: ${table}`);
       return {
         update: (payload: any) => {
           capture.payload = payload;
-          return { eq: () => ({ then: (resolve: any) => Promise.resolve({ error }).then(resolve) }) };
+          return {
+            eq: () => ({
+              select: () => ({ then: (resolve: any) => Promise.resolve(result).then(resolve) }),
+            }),
+          };
         },
       };
     };
@@ -146,16 +153,24 @@ describe('updateHouseholdNotificationPrefs', () => {
 
   it('writes both preference fields', async () => {
     const capture: { payload?: any } = {};
-    const client = fakeClient(null, capture);
+    const client = fakeClient({ data: [{ id: 'house-1' }], error: null }, capture);
     await updateHouseholdNotificationPrefs(client, 'house-1', { notifyDaysProduce: 3, notifyDaysNonproduce: 10 });
     expect(capture.payload).toEqual({ notify_days_produce: 3, notify_days_nonproduce: 10 });
   });
 
   it('throws when the update errors', async () => {
     const capture: { payload?: any } = {};
-    const client = fakeClient(new Error('update failed'), capture);
+    const client = fakeClient({ data: null, error: new Error('update failed') }, capture);
     await expect(
       updateHouseholdNotificationPrefs(client, 'house-1', { notifyDaysProduce: 3, notifyDaysNonproduce: 10 })
     ).rejects.toThrow('update failed');
+  });
+
+  it('throws when RLS silently matches zero rows (non-admin member)', async () => {
+    const capture: { payload?: any } = {};
+    const client = fakeClient({ data: [], error: null }, capture);
+    await expect(
+      updateHouseholdNotificationPrefs(client, 'house-1', { notifyDaysProduce: 3, notifyDaysNonproduce: 10 })
+    ).rejects.toThrow('You do not have permission to update notification preferences.');
   });
 });

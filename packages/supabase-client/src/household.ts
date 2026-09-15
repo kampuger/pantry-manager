@@ -72,13 +72,20 @@ export async function updateHouseholdNotificationPrefs(
   householdId: string,
   prefs: NotificationPreferences
 ): Promise<void> {
-  const { error } = await client
+  // `.select()` matters: RLS restricts households UPDATE to owners/admins, and
+  // a bare update that matches zero rows comes back as { data: null, error:
+  // null } — a silent no-op the UI would report as a successful save.
+  const { data, error } = await client
     .from('households')
     .update({
       notify_days_produce: prefs.notifyDaysProduce,
       notify_days_nonproduce: prefs.notifyDaysNonproduce,
     })
-    .eq('id', householdId);
+    .eq('id', householdId)
+    .select('id');
 
   if (error) throw error;
+  if (!data || data.length === 0) {
+    throw new Error('You do not have permission to update notification preferences.');
+  }
 }

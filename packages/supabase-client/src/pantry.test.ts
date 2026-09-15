@@ -5,10 +5,9 @@ import type { Database } from './types';
 function fakePantryClient(config: {
   insert?: (payload: any) => Promise<{ data: any; error: any }>;
   update?: (payload: any, id: string) => Promise<{ data: any; error: any }>;
-  updateNoSelect?: (payload: any, id: string) => Promise<{ error: any }>;
-  logInsert?: (payload: any) => Promise<{ error: any }>;
-}): SupabaseClient<Database> & { lastPayload: any; lastLogPayload: any } {
-  const client: any = { lastPayload: undefined, lastLogPayload: undefined };
+  rpc?: (fn: string, args: any) => Promise<{ data: any; error: any }>;
+}): SupabaseClient<Database> & { lastPayload: any; lastRpc: any } {
+  const client: any = { lastPayload: undefined, lastRpc: undefined };
   client.from = (table: string): any => {
     if (table === 'pantry_items') {
       return {
@@ -19,27 +18,19 @@ function fakePantryClient(config: {
         update: (payload: any) => {
           client.lastPayload = payload;
           return {
-            eq: (_col: string, id: string) => {
-              if (config.updateNoSelect) {
-                const resultPromise = config.updateNoSelect(payload, id);
-                return { then: (resolve: any) => resultPromise.then(resolve) };
-              }
-              return { select: () => ({ single: async () => config.update!(payload, id) }) };
-            },
+            eq: (_col: string, id: string) => ({
+              select: () => ({ single: async () => config.update!(payload, id) }),
+            }),
           };
         },
       };
     }
-    if (table === 'inventory_movement_logs') {
-      return {
-        insert: (payload: any) => {
-          client.lastLogPayload = payload;
-          const resultPromise = config.logInsert!(payload);
-          return { then: (resolve: any) => resultPromise.then(resolve) };
-        },
-      };
-    }
     throw new Error(`Unexpected table: ${table}`);
+  };
+  client.rpc = (fn: string, args: any) => {
+    client.lastRpc = { fn, args };
+    const resultPromise = config.rpc!(fn, args);
+    return { then: (resolve: any) => resultPromise.then(resolve) };
   };
   return client;
 }
@@ -131,11 +122,8 @@ describe('updatePantryItem', () => {
 });
 
 describe('archivePantryItem', () => {
-  it('archives the item and logs the movement event', async () => {
-    const client = fakePantryClient({
-      updateNoSelect: async () => ({ error: null }),
-      logInsert: async () => ({ error: null }),
-    });
+  it('archives the item and logs the movement event in one atomic rpc call', async () => {
+    const client = fakePantryClient({ rpc: async () => ({ data: null, error: null }) });
 
     await archivePantryItem(client, {
       itemId: 'item-1',
@@ -145,39 +133,34 @@ describe('archivePantryItem', () => {
       userId: 'user-1',
     });
 
-    expect(client.lastPayload).toEqual({ is_archived: true });
-    expect(client.lastLogPayload).toEqual({
-      household_id: 'house-1',
-      pantry_item_id: 'item-1',
-      event_type: 'CONSUMED',
-      quantity_delta: -2,
-      triggered_by: 'user-1',
+    expect(client.lastRpc).toEqual({
+      fn: 'archive_pantry_item',
+      args: {
+        p_item_id: 'item-1',
+        p_event_type: 'CONSUMED',
+        p_quantity: 2,
+        p_triggered_by: 'user-1',
+      },
     });
   });
 
-  it('throws and skips the log when the archive update errors', async () => {
-    const client = fakePantryClient({
-      updateNoSelect: async () => ({ error: new Error('archive failed') }),
-      logInsert: async () => ({ error: null }),
+  it('passes the discard event type through', async () => {
+    const client = fakePantryClient({ rpc: async () => ({ data: null, error: null }) });
+
+    await archivePantryItem(client, {
+      itemId: 'item-2',
+      householdId: 'house-1',
+      quantity: 1,
+      eventType: 'SPOILED_DISCARDED',
+      userId: 'user-1',
     });
 
-    await expect(
-      archivePantryItem(client, {
-        itemId: 'item-1',
-        householdId: 'house-1',
-        quantity: 1,
-        eventType: 'SPOILED_DISCARDED',
-        userId: 'user-1',
-      })
-    ).rejects.toThrow('archive failed');
-
-    expect(client.lastLogPayload).toBeUndefined();
+    expect(client.lastRpc.args.p_event_type).toBe('SPOILED_DISCARDED');
   });
 
-  it('throws when the movement log insert errors', async () => {
+  it('throws when the rpc returns an error', async () => {
     const client = fakePantryClient({
-      updateNoSelect: async () => ({ error: null }),
-      logInsert: async () => ({ error: new Error('log failed') }),
+      rpc: async () => ({ data: null, error: new Error('archive failed') }),
     });
 
     await expect(
@@ -188,6 +171,6 @@ describe('archivePantryItem', () => {
         eventType: 'CONSUMED',
         userId: 'user-1',
       })
-    ).rejects.toThrow('log failed');
+    ).rejects.toThrow('archive failed');
   });
 });

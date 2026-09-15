@@ -114,6 +114,16 @@ export interface Database {
     // (even empty) for its generic table-typing to activate at all — without
     // them, every `.from(...)` call silently degenerates to `never`.
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      archive_pantry_item: {
+        Args: {
+          p_item_id: string;
+          p_event_type: string;
+          p_quantity: number;
+          p_triggered_by: string;
+        };
+        Returns: void;
+      };
+    };
   };
 }

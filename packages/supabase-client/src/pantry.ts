@@ -87,24 +87,25 @@ export interface ArchivePantryItemInput {
   userId: string;
 }
 
+/**
+ * Archives the item and appends its movement-log entry. Both writes happen
+ * inside the `archive_pantry_item` Postgres function (see
+ * `supabase/migrations/20260915000001_archive_pantry_item_function.sql`) so
+ * they share one transaction and cannot go out of sync.
+ *
+ * `householdId` stays in the input for call-site symmetry, but the function
+ * derives the household from the item row itself.
+ */
 export async function archivePantryItem(
   client: SupabaseClient<Database>,
   input: ArchivePantryItemInput
 ): Promise<void> {
-  const { error: updateError } = await client
-    .from('pantry_items')
-    .update({ is_archived: true })
-    .eq('id', input.itemId);
-
-  if (updateError) throw updateError;
-
-  const { error: logError } = await client.from('inventory_movement_logs').insert({
-    household_id: input.householdId,
-    pantry_item_id: input.itemId,
-    event_type: input.eventType,
-    quantity_delta: -Math.abs(input.quantity),
-    triggered_by: input.userId,
+  const { error } = await client.rpc('archive_pantry_item', {
+    p_item_id: input.itemId,
+    p_event_type: input.eventType,
+    p_quantity: input.quantity,
+    p_triggered_by: input.userId,
   });
 
-  if (logError) throw logError;
+  if (error) throw error;
 }
