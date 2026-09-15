@@ -182,9 +182,7 @@ export default function PantryPage() {
         }}
       >
         <h1 style={{ fontSize: 28, margin: 0, letterSpacing: '-0.02em' }}>Pantry Inventory</h1>
-        {/* RLS only lets owners/admins update the households row, so a plain
-            MEMBER's save can never land — don't offer the control at all. */}
-        {membership && membership !== 'loading' && membership.role !== 'MEMBER' && (
+        {membership && membership !== 'loading' && (
           <button
             onClick={() => setShowPrefs(true)}
             style={{
@@ -289,7 +287,11 @@ export default function PantryPage() {
             </div>
           )}
           {showPrefs && membership && (
-            <NotificationPrefsModal householdId={membership.householdId} onClose={() => setShowPrefs(false)} />
+            <NotificationPrefsModal
+              householdId={membership.householdId}
+              isAdmin={membership.role !== 'MEMBER'}
+              onClose={() => setShowPrefs(false)}
+            />
           )}
         </>
       )}
