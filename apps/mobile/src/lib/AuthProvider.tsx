@@ -2,12 +2,19 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from './supabaseClient';
 
+// Mobile has no deep-link scheme configured, so password reset always sends
+// the user to the same web reset-password page (see apps/web's
+// AuthProvider) rather than needing its own in-app reset screen — the user
+// completes the change in a browser, then comes back and signs in normally.
+const RESET_PASSWORD_REDIRECT_URL = 'http://localhost:3000/reset-password';
+
 interface AuthContextValue {
   session: Session | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signUp: (email: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
+  resetPassword: (email: string) => Promise<{ error: string | null }>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -42,6 +49,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
     signOut: async () => {
       await supabase.auth.signOut();
+    },
+    resetPassword: async (email) => {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: RESET_PASSWORD_REDIRECT_URL,
+      });
+      return { error: error?.message ?? null };
     },
   };
 

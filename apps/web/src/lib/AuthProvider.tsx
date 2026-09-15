@@ -4,12 +4,19 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from './supabaseClient';
 
+// Single hardcoded redirect target for password-reset emails on both
+// platforms — see docs/superpowers brainstorming for 2026-09-15: mobile has
+// no deep-link scheme configured, so it reuses this same web URL rather than
+// needing its own reset screen. Update this if the app moves off localhost.
+const RESET_PASSWORD_REDIRECT_URL = 'http://localhost:3000/reset-password';
+
 interface AuthContextValue {
   session: Session | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signUp: (email: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
+  resetPassword: (email: string) => Promise<{ error: string | null }>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -44,6 +51,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
     signOut: async () => {
       await supabase.auth.signOut();
+    },
+    resetPassword: async (email) => {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: RESET_PASSWORD_REDIRECT_URL,
+      });
+      return { error: error?.message ?? null };
     },
   };
 
