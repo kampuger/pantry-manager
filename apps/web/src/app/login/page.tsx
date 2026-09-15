@@ -61,6 +61,7 @@ export default function LoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               style={inputStyle}
+              suppressHydrationWarning
             />
           </label>
           <label style={labelStyle}>
@@ -72,18 +73,25 @@ export default function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               style={inputStyle}
+              suppressHydrationWarning
             />
           </label>
           {status && (
             <p style={{ color: color.destructive, fontSize: 13, margin: 0 }}>{status}</p>
           )}
-          <button type="submit" disabled={submitting} style={{ ...buttonStyle('primary'), width: '100%' }}>
+          <button
+            type="submit"
+            disabled={submitting}
+            style={{ ...buttonStyle('primary'), width: '100%' }}
+            suppressHydrationWarning
+          >
             {submitting ? 'Please wait…' : mode === 'sign-in' ? 'Sign in' : 'Sign up'}
           </button>
         </form>
         <button
           onClick={() => setMode(mode === 'sign-in' ? 'sign-up' : 'sign-in')}
           style={{ ...buttonStyle('ghost'), marginTop: 16, color: color.primary, fontWeight: 600 }}
+          suppressHydrationWarning
         >
           {mode === 'sign-in' ? 'Need an account? Sign up' : 'Already have an account? Sign in'}
         </button>
