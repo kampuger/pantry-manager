@@ -11,6 +11,9 @@ export interface Database {
           weekly_shopping_day: number | null;
           notify_days_produce: number;
           notify_days_nonproduce: number;
+          notify_email_send_time: string;
+          notify_email_intro: string | null;
+          last_digest_sent_date: string | null;
           created_by: string;
           created_at: string;
           updated_at: string;
@@ -28,6 +31,7 @@ export interface Database {
           household_id: string;
           user_id: string;
           role: 'OWNER' | 'ADMIN' | 'MEMBER';
+          notifications_enabled: boolean;
           joined_at: string;
         };
         Insert: Partial<Database['public']['Tables']['household_members']['Row']> & {

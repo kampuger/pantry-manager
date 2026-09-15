@@ -1,4 +1,11 @@
-import { getMyHousehold, createHousehold, getHouseholdNotificationPrefs, updateHouseholdNotificationPrefs } from './household';
+import {
+  getMyHousehold,
+  createHousehold,
+  getHouseholdNotificationPrefs,
+  updateHouseholdNotificationPrefs,
+  getMemberNotificationsEnabled,
+  setMemberNotificationsEnabled,
+} from './household';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
@@ -154,15 +161,30 @@ describe('updateHouseholdNotificationPrefs', () => {
   it('writes both preference fields', async () => {
     const capture: { payload?: any } = {};
     const client = fakeClient({ data: [{ id: 'house-1' }], error: null }, capture);
-    await updateHouseholdNotificationPrefs(client, 'house-1', { notifyDaysProduce: 3, notifyDaysNonproduce: 10 });
-    expect(capture.payload).toEqual({ notify_days_produce: 3, notify_days_nonproduce: 10 });
+    await updateHouseholdNotificationPrefs(client, 'house-1', {
+      notifyDaysProduce: 3,
+      notifyDaysNonproduce: 10,
+      emailSendTime: '08:00:00',
+      emailIntro: null,
+    });
+    expect(capture.payload).toEqual({
+      notify_days_produce: 3,
+      notify_days_nonproduce: 10,
+      notify_email_send_time: '08:00:00',
+      notify_email_intro: null,
+    });
   });
 
   it('throws when the update errors', async () => {
     const capture: { payload?: any } = {};
     const client = fakeClient({ data: null, error: new Error('update failed') }, capture);
     await expect(
-      updateHouseholdNotificationPrefs(client, 'house-1', { notifyDaysProduce: 3, notifyDaysNonproduce: 10 })
+      updateHouseholdNotificationPrefs(client, 'house-1', {
+        notifyDaysProduce: 3,
+        notifyDaysNonproduce: 10,
+        emailSendTime: '08:00:00',
+        emailIntro: null,
+      })
     ).rejects.toThrow('update failed');
   });
 
@@ -170,7 +192,142 @@ describe('updateHouseholdNotificationPrefs', () => {
     const capture: { payload?: any } = {};
     const client = fakeClient({ data: [], error: null }, capture);
     await expect(
-      updateHouseholdNotificationPrefs(client, 'house-1', { notifyDaysProduce: 3, notifyDaysNonproduce: 10 })
+      updateHouseholdNotificationPrefs(client, 'house-1', {
+        notifyDaysProduce: 3,
+        notifyDaysNonproduce: 10,
+        emailSendTime: '08:00:00',
+        emailIntro: null,
+      })
     ).rejects.toThrow('You do not have permission to update notification preferences.');
+  });
+});
+
+describe('getHouseholdNotificationPrefs (email fields)', () => {
+  function fakeClient(result: { data: any; error: any }): SupabaseClient<Database> {
+    const from = (table: string): any => {
+      if (table !== 'households') throw new Error(`Unexpected table: ${table}`);
+      return { select: () => ({ eq: () => ({ single: async () => result }) }) };
+    };
+    return { from } as unknown as SupabaseClient<Database>;
+  }
+
+  it('includes the email send time and intro text', async () => {
+    const client = fakeClient({
+      data: {
+        notify_days_produce: 2,
+        notify_days_nonproduce: 7,
+        notify_email_send_time: '08:00:00',
+        notify_email_intro: 'Hey team!',
+      },
+      error: null,
+    });
+    expect(await getHouseholdNotificationPrefs(client, 'house-1')).toEqual({
+      notifyDaysProduce: 2,
+      notifyDaysNonproduce: 7,
+      emailSendTime: '08:00:00',
+      emailIntro: 'Hey team!',
+    });
+  });
+});
+
+describe('updateHouseholdNotificationPrefs (email fields)', () => {
+  function fakeClient(
+    result: { data: any; error: any },
+    capture: { payload?: any }
+  ): SupabaseClient<Database> {
+    const from = (table: string): any => {
+      if (table !== 'households') throw new Error(`Unexpected table: ${table}`);
+      return {
+        update: (payload: any) => {
+          capture.payload = payload;
+          return {
+            eq: () => ({
+              select: () => ({ then: (resolve: any) => Promise.resolve(result).then(resolve) }),
+            }),
+          };
+        },
+      };
+    };
+    return { from } as unknown as SupabaseClient<Database>;
+  }
+
+  it('writes all four preference fields', async () => {
+    const capture: { payload?: any } = {};
+    const client = fakeClient({ data: [{ id: 'house-1' }], error: null }, capture);
+    await updateHouseholdNotificationPrefs(client, 'house-1', {
+      notifyDaysProduce: 3,
+      notifyDaysNonproduce: 10,
+      emailSendTime: '09:30',
+      emailIntro: 'Reminder!',
+    });
+    expect(capture.payload).toEqual({
+      notify_days_produce: 3,
+      notify_days_nonproduce: 10,
+      notify_email_send_time: '09:30',
+      notify_email_intro: 'Reminder!',
+    });
+  });
+});
+
+describe('getMemberNotificationsEnabled', () => {
+  function fakeClient(result: { data: any; error: any }): SupabaseClient<Database> {
+    const from = (table: string): any => {
+      if (table !== 'household_members') throw new Error(`Unexpected table: ${table}`);
+      return {
+        select: () => ({
+          eq: () => ({ eq: () => ({ single: async () => result }) }),
+        }),
+      };
+    };
+    return { from } as unknown as SupabaseClient<Database>;
+  }
+
+  it('returns the member row flag', async () => {
+    const client = fakeClient({ data: { notifications_enabled: false }, error: null });
+    expect(await getMemberNotificationsEnabled(client, 'house-1', 'user-1')).toBe(false);
+  });
+
+  it('throws when the query errors', async () => {
+    const client = fakeClient({ data: null, error: new Error('boom') });
+    await expect(getMemberNotificationsEnabled(client, 'house-1', 'user-1')).rejects.toThrow('boom');
+  });
+});
+
+describe('setMemberNotificationsEnabled', () => {
+  function fakeClient(
+    result: { data: any; error: any },
+    capture: { payload?: any }
+  ): SupabaseClient<Database> {
+    const from = (table: string): any => {
+      if (table !== 'household_members') throw new Error(`Unexpected table: ${table}`);
+      return {
+        update: (payload: any) => {
+          capture.payload = payload;
+          return {
+            eq: () => ({
+              eq: () => ({
+                select: () => ({ then: (resolve: any) => Promise.resolve(result).then(resolve) }),
+              }),
+            }),
+          };
+        },
+      };
+    };
+    return { from } as unknown as SupabaseClient<Database>;
+  }
+
+  it('writes the flag for the caller\'s own membership row', async () => {
+    const capture: { payload?: any } = {};
+    const client = fakeClient({ data: [{ id: 'member-1' }], error: null }, capture);
+    await setMemberNotificationsEnabled(client, 'house-1', 'user-1', false);
+    expect(capture.payload).toEqual({ notifications_enabled: false });
+  });
+
+  it('throws when the update matches zero rows', async () => {
+    const capture: { payload?: any } = {};
+    const client = fakeClient({ data: [], error: null }, capture);
+    await expect(setMemberNotificationsEnabled(client, 'house-1', 'user-1', false)).rejects.toThrow(
+      'Failed to update your notification setting.'
+    );
   });
 });

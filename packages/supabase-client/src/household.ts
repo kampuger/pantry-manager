@@ -48,6 +48,8 @@ export async function createHousehold(
 export interface NotificationPreferences {
   notifyDaysProduce: number;
   notifyDaysNonproduce: number;
+  emailSendTime: string;
+  emailIntro: string | null;
 }
 
 export async function getHouseholdNotificationPrefs(
@@ -56,7 +58,7 @@ export async function getHouseholdNotificationPrefs(
 ): Promise<NotificationPreferences> {
   const { data, error } = await client
     .from('households')
-    .select('notify_days_produce, notify_days_nonproduce')
+    .select('notify_days_produce, notify_days_nonproduce, notify_email_send_time, notify_email_intro')
     .eq('id', householdId)
     .single();
 
@@ -64,6 +66,8 @@ export async function getHouseholdNotificationPrefs(
   return {
     notifyDaysProduce: data.notify_days_produce,
     notifyDaysNonproduce: data.notify_days_nonproduce,
+    emailSendTime: data.notify_email_send_time,
+    emailIntro: data.notify_email_intro,
   };
 }
 
@@ -80,6 +84,8 @@ export async function updateHouseholdNotificationPrefs(
     .update({
       notify_days_produce: prefs.notifyDaysProduce,
       notify_days_nonproduce: prefs.notifyDaysNonproduce,
+      notify_email_send_time: prefs.emailSendTime,
+      notify_email_intro: prefs.emailIntro,
     })
     .eq('id', householdId)
     .select('id');
@@ -87,5 +93,40 @@ export async function updateHouseholdNotificationPrefs(
   if (error) throw error;
   if (!data || data.length === 0) {
     throw new Error('You do not have permission to update notification preferences.');
+  }
+}
+
+export async function getMemberNotificationsEnabled(
+  client: SupabaseClient<Database>,
+  householdId: string,
+  userId: string
+): Promise<boolean> {
+  const { data, error } = await client
+    .from('household_members')
+    .select('notifications_enabled')
+    .eq('household_id', householdId)
+    .eq('user_id', userId)
+    .single();
+
+  if (error) throw error;
+  return data.notifications_enabled;
+}
+
+export async function setMemberNotificationsEnabled(
+  client: SupabaseClient<Database>,
+  householdId: string,
+  userId: string,
+  enabled: boolean
+): Promise<void> {
+  const { data, error } = await client
+    .from('household_members')
+    .update({ notifications_enabled: enabled })
+    .eq('household_id', householdId)
+    .eq('user_id', userId)
+    .select('id');
+
+  if (error) throw error;
+  if (!data || data.length === 0) {
+    throw new Error('Failed to update your notification setting.');
   }
 }
