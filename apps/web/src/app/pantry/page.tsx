@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { getFreshnessFlag } from '@pantry/core';
-import { groupItemsByLocation } from '@pantry/ui';
+import { daysUntil, groupItemsByLocation } from '@pantry/ui';
 import {
   addPantryItem,
   updatePantryItem,
@@ -29,12 +29,6 @@ const LOCATION_META: Record<string, { icon: string; label: string }> = {
   COUNTER: { icon: '🍽️', label: 'Counter' },
   OTHER: { icon: '📦', label: 'Other' },
 };
-
-function daysUntil(dateStr: string | null): number | null {
-  if (!dateStr) return null;
-  const ms = new Date(dateStr).getTime() - Date.now();
-  return Math.floor(ms / (1000 * 60 * 60 * 24));
-}
 
 function ItemCard({ children }: { children: React.ReactNode }) {
   return <div style={{ ...cardStyle, padding: '14px 16px', display: 'grid', gap: 8 }}>{children}</div>;
@@ -72,15 +66,27 @@ export default function PantryPage() {
   const [items, setItems] = useState<PantryItemRow[]>([]);
   const [editingItem, setEditingItem] = useState<PantryItemRow | null>(null);
   const [showPrefs, setShowPrefs] = useState(false);
+  const [pageError, setPageError] = useState<string | null>(null);
 
-  const refreshItems = useCallback((householdId: string) => {
-    supabase
-      .from('pantry_items')
-      .select('*')
-      .eq('household_id', householdId)
-      .eq('is_archived', false)
-      .then(({ data }) => setItems(data ?? []));
-  }, []);
+  const refreshItems = useCallback(
+    (householdId: string) =>
+      supabase
+        .from('pantry_items')
+        .select('*')
+        .eq('household_id', householdId)
+        .eq('is_archived', false)
+        // Soonest-expiring first within each location group; undated items last.
+        .order('expiration_date', { ascending: true, nullsFirst: false })
+        .then(({ data, error }) => {
+          if (error) {
+            setPageError(`Couldn't load your pantry: ${error.message}`);
+            return;
+          }
+          setPageError(null);
+          setItems(data ?? []);
+        }),
+    []
+  );
 
   useEffect(() => {
     if (!membership || membership === 'loading') return;
@@ -116,7 +122,7 @@ export default function PantryPage() {
       expirationDate: values.expirationDate,
       notifyDaysBeforeExpiry: values.notifyDaysOverride,
     });
-    refreshItems(membership.householdId);
+    await refreshItems(membership.householdId);
   }
 
   async function handleEditSave(values: ItemFormValues) {
@@ -131,19 +137,28 @@ export default function PantryPage() {
       notifyDaysBeforeExpiry: values.notifyDaysOverride,
     });
     setEditingItem(null);
-    refreshItems(membership.householdId);
+    await refreshItems(membership.householdId);
   }
 
+  // Called as a floating promise from the card actions, so it swallows its own
+  // errors into the page banner rather than rejecting into nothing.
   async function handleArchive(item: PantryItemRow, eventType: 'CONSUMED' | 'SPOILED_DISCARDED') {
     if (!membership || membership === 'loading') return;
-    await archivePantryItem(supabase, {
-      itemId: item.id,
-      householdId: membership.householdId,
-      quantity: item.quantity,
-      eventType,
-      userId: session!.user.id,
-    });
-    refreshItems(membership.householdId);
+    try {
+      setPageError(null);
+      await archivePantryItem(supabase, {
+        itemId: item.id,
+        householdId: membership.householdId,
+        quantity: item.quantity,
+        eventType,
+        userId: session!.user.id,
+      });
+      await refreshItems(membership.householdId);
+    } catch (err) {
+      setPageError(
+        err instanceof Error ? `Couldn't update ${item.name}: ${err.message}` : `Couldn't update ${item.name}.`
+      );
+    }
   }
 
   const groups = groupItemsByLocation(
@@ -167,7 +182,9 @@ export default function PantryPage() {
         }}
       >
         <h1 style={{ fontSize: 28, margin: 0, letterSpacing: '-0.02em' }}>Pantry Inventory</h1>
-        {membership && membership !== 'loading' && (
+        {/* RLS only lets owners/admins update the households row, so a plain
+            MEMBER's save can never land — don't offer the control at all. */}
+        {membership && membership !== 'loading' && membership.role !== 'MEMBER' && (
           <button
             onClick={() => setShowPrefs(true)}
             style={{
@@ -190,7 +207,25 @@ export default function PantryPage() {
           <div style={{ marginTop: 24 }}>
             <ItemForm submitLabel="Add item" onSubmit={handleAdd} />
           </div>
-          {items.length === 0 && (
+          {pageError && (
+            <p
+              role="alert"
+              style={{
+                ...cardStyle,
+                boxShadow: 'none',
+                background: color.destructiveBg,
+                borderColor: color.destructive,
+                marginTop: 16,
+                marginBottom: 0,
+                padding: '12px 16px',
+                color: color.destructive,
+                fontSize: 13,
+              }}
+            >
+              {pageError}
+            </p>
+          )}
+          {!pageError && items.length === 0 && (
             <p
               style={{
                 ...cardStyle,

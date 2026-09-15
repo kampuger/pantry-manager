@@ -62,6 +62,23 @@ export function ItemForm({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // `onCancel` is only wired up by the edit-mode caller; the add form has no
+  // Cancel button. It is the component's only add-vs-edit signal.
+  const isEditMode = onCancel != null;
+
+  function resetFields() {
+    setName(initialValues.name);
+    setQuantity(String(initialValues.quantity));
+    setUnit(initialValues.unit);
+    setStorageLocation(initialValues.storageLocation);
+    setIsProduce(initialValues.isProduce);
+    setManualExpirationDate(initialValues.expirationDate ?? '');
+    setShowAdvanced(initialValues.notifyDaysOverride != null);
+    setNotifyDaysOverride(
+      initialValues.notifyDaysOverride != null ? String(initialValues.notifyDaysOverride) : ''
+    );
+  }
+
   const computedProduceExpiry = isProduce
     ? computeExpiryDate({ isProduce: true, purchaseDate: initialValues.purchaseDate ?? undefined })
     : null;
@@ -93,6 +110,10 @@ export function ItemForm({
         expirationDate,
         notifyDaysOverride: notifyDaysOverride ? Number(notifyDaysOverride) : null,
       });
+      // Add mode only: clear the fields so a second accidental tap can't
+      // create a duplicate row. The edit form is about to unmount (Fix 1), so
+      // resetting it there would just flash the old values on the way out.
+      if (!isEditMode) resetFields();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save item');
     } finally {

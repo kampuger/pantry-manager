@@ -17,17 +17,23 @@ export function NotificationPrefsModal({
   const [notifyDaysProduce, setNotifyDaysProduce] = useState('2');
   const [notifyDaysNonproduce, setNotifyDaysNonproduce] = useState('7');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!visible) return;
     setLoading(true);
-    getHouseholdNotificationPrefs(supabase, householdId).then((prefs) => {
-      setNotifyDaysProduce(String(prefs.notifyDaysProduce));
-      setNotifyDaysNonproduce(String(prefs.notifyDaysNonproduce));
-      setLoading(false);
-    });
+    getHouseholdNotificationPrefs(supabase, householdId)
+      .then((prefs) => {
+        setNotifyDaysProduce(String(prefs.notifyDaysProduce));
+        setNotifyDaysNonproduce(String(prefs.notifyDaysNonproduce));
+        setLoadError(null);
+      })
+      .catch((err: unknown) => {
+        setLoadError(err instanceof Error ? err.message : 'Failed to load preferences');
+      })
+      .finally(() => setLoading(false));
   }, [visible, householdId]);
 
   async function handleSave() {
@@ -55,9 +61,11 @@ export function NotificationPrefsModal({
       <View style={styles.overlay}>
         <View style={styles.card}>
           <Text style={styles.title}>Notification preferences</Text>
-          {loading ? (
-            <Text style={styles.meta}>Loading…</Text>
-          ) : (
+          {loading ? <Text style={styles.meta}>Loading…</Text> : null}
+          {!loading && loadError ? (
+            <Text style={styles.error}>Could not load your preferences: {loadError}</Text>
+          ) : null}
+          {!loading && !loadError ? (
             <>
               <Text style={styles.fieldLabel}>Remind me before expiry — Produce items (days)</Text>
               <TextInput
@@ -78,12 +86,16 @@ export function NotificationPrefsModal({
                 for now this just saves your preference.
               </Text>
               {error && <Text style={styles.error}>{error}</Text>}
-              <View style={styles.buttonRow}>
-                <AppButton title="Cancel" variant="secondary" onPress={onClose} />
-                <AppButton title={saving ? 'Saving…' : 'Save'} onPress={handleSave} disabled={saving} />
-              </View>
             </>
-          )}
+          ) : null}
+          {/* Always rendered, whatever the load state — otherwise a failed
+              fetch leaves the user with no way out of the modal. */}
+          <View style={styles.buttonRow}>
+            <AppButton title="Cancel" variant="secondary" onPress={onClose} />
+            {!loading && !loadError ? (
+              <AppButton title={saving ? 'Saving…' : 'Save'} onPress={handleSave} disabled={saving} />
+            ) : null}
+          </View>
         </View>
       </View>
     </Modal>

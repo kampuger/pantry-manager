@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View, ActivityIndicator, Pressable } from 'react-native';
 import { getFreshnessFlag } from '@pantry/core';
-import { groupItemsByLocation } from '@pantry/ui';
+import { daysUntil, groupItemsByLocation } from '@pantry/ui';
 import {
   addPantryItem,
   updatePantryItem,
@@ -29,12 +29,6 @@ const LOCATION_META: Record<string, { icon: string; label: string }> = {
   COUNTER: { icon: '🍽️', label: 'Counter' },
   OTHER: { icon: '📦', label: 'Other' },
 };
-
-function daysUntil(dateStr: string | null): number | null {
-  if (!dateStr) return null;
-  const ms = new Date(dateStr).getTime() - Date.now();
-  return Math.floor(ms / (1000 * 60 * 60 * 24));
-}
 
 function DemoPantryList() {
   return (
@@ -68,15 +62,27 @@ export function PantryScreen() {
   const [items, setItems] = useState<PantryItemRow[]>([]);
   const [editingItem, setEditingItem] = useState<PantryItemRow | null>(null);
   const [showPrefs, setShowPrefs] = useState(false);
+  const [screenError, setScreenError] = useState<string | null>(null);
 
-  const refreshItems = useCallback((householdId: string) => {
-    supabase
-      .from('pantry_items')
-      .select('*')
-      .eq('household_id', householdId)
-      .eq('is_archived', false)
-      .then(({ data }) => setItems(data ?? []));
-  }, []);
+  const refreshItems = useCallback(
+    (householdId: string) =>
+      supabase
+        .from('pantry_items')
+        .select('*')
+        .eq('household_id', householdId)
+        .eq('is_archived', false)
+        // Soonest-expiring first within each location group; undated items last.
+        .order('expiration_date', { ascending: true, nullsFirst: false })
+        .then(({ data, error }) => {
+          if (error) {
+            setScreenError(`Couldn't load your pantry: ${error.message}`);
+            return;
+          }
+          setScreenError(null);
+          setItems(data ?? []);
+        }),
+    []
+  );
 
   useEffect(() => {
     if (!membership || membership === 'loading') return;
@@ -106,7 +112,7 @@ export function PantryScreen() {
       expirationDate: values.expirationDate,
       notifyDaysBeforeExpiry: values.notifyDaysOverride,
     });
-    refreshItems(membership.householdId);
+    await refreshItems(membership.householdId);
   }
 
   async function handleEditSave(values: ItemFormValues) {
@@ -121,19 +127,28 @@ export function PantryScreen() {
       notifyDaysBeforeExpiry: values.notifyDaysOverride,
     });
     setEditingItem(null);
-    refreshItems(membership.householdId);
+    await refreshItems(membership.householdId);
   }
 
+  // Called as a floating promise from the card actions, so it swallows its own
+  // errors into the screen banner rather than rejecting into nothing.
   async function handleArchive(item: PantryItemRow, eventType: 'CONSUMED' | 'SPOILED_DISCARDED') {
     if (!membership || membership === 'loading') return;
-    await archivePantryItem(supabase, {
-      itemId: item.id,
-      householdId: membership.householdId,
-      quantity: item.quantity,
-      eventType,
-      userId: session!.user.id,
-    });
-    refreshItems(membership.householdId);
+    try {
+      setScreenError(null);
+      await archivePantryItem(supabase, {
+        itemId: item.id,
+        householdId: membership.householdId,
+        quantity: item.quantity,
+        eventType,
+        userId: session!.user.id,
+      });
+      await refreshItems(membership.householdId);
+    } catch (err) {
+      setScreenError(
+        err instanceof Error ? `Couldn't update ${item.name}: ${err.message}` : `Couldn't update ${item.name}.`
+      );
+    }
   }
 
   const groups = groupItemsByLocation(
@@ -149,7 +164,9 @@ export function PantryScreen() {
     <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
       <View style={styles.topHeaderRow}>
         <Text style={styles.title}>Pantry Inventory</Text>
-        {membership && membership !== 'loading' && (
+        {/* RLS only lets owners/admins update the households row, so a plain
+            MEMBER's save can never land — don't offer the control at all. */}
+        {membership && membership !== 'loading' && membership.role !== 'MEMBER' && (
           <Pressable
             onPress={() => setShowPrefs(true)}
             style={({ pressed }) => [styles.gearButton, pressed && styles.gearButtonPressed]}
@@ -162,8 +179,13 @@ export function PantryScreen() {
       {membership === null && <CreateHouseholdPrompt onCreate={create} />}
       {membership && membership !== 'loading' && (
         <>
+          {/* Both branches sit at the same JSX position, so without a distinct
+              `key` React reuses one ItemForm instance and its useState
+              initializers never re-run — the edit form would open showing the
+              previous render's values and save those over the real item. */}
           {editingItem ? (
             <ItemForm
+              key={`edit-${editingItem.id}`}
               submitLabel="Save changes"
               onCancel={() => setEditingItem(null)}
               initialValues={{
@@ -179,9 +201,12 @@ export function PantryScreen() {
               onSubmit={handleEditSave}
             />
           ) : (
-            <ItemForm submitLabel="Add item" onSubmit={handleAdd} />
+            <ItemForm key="add" submitLabel="Add item" onSubmit={handleAdd} />
           )}
-          {items.length === 0 && <Text style={styles.emptyState}>No pantry items yet.</Text>}
+          {screenError && <Text style={styles.errorBanner}>{screenError}</Text>}
+          {!screenError && items.length === 0 && (
+            <Text style={styles.emptyState}>No pantry items yet.</Text>
+          )}
           {groups.map((group) => (
             <PantryLocationGroup
               key={group.location}
@@ -232,6 +257,18 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 },
   name: { flex: 1, fontSize: 15, lineHeight: 21, fontFamily: font.semibold, color: color.foreground },
   meta: { color: color.mutedForeground, fontSize: 13, fontFamily: font.regular },
+  errorBanner: {
+    backgroundColor: color.destructiveBg,
+    borderWidth: 1,
+    borderColor: color.destructive,
+    borderRadius: radius.md,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    color: color.destructive,
+    fontSize: 13,
+    fontFamily: font.regular,
+    overflow: 'hidden',
+  },
   emptyState: {
     backgroundColor: color.muted,
     borderWidth: 1,
