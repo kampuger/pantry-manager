@@ -164,9 +164,7 @@ export function PantryScreen() {
     <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
       <View style={styles.topHeaderRow}>
         <Text style={styles.title}>Pantry Inventory</Text>
-        {/* RLS only lets owners/admins update the households row, so a plain
-            MEMBER's save can never land — don't offer the control at all. */}
-        {membership && membership !== 'loading' && membership.role !== 'MEMBER' && (
+        {membership && membership !== 'loading' && (
           <Pressable
             onPress={() => setShowPrefs(true)}
             style={({ pressed }) => [styles.gearButton, pressed && styles.gearButtonPressed]}
@@ -221,6 +219,7 @@ export function PantryScreen() {
           ))}
           <NotificationPrefsModal
             householdId={membership.householdId}
+            isAdmin={membership.role !== 'MEMBER'}
             visible={showPrefs}
             onClose={() => setShowPrefs(false)}
           />
