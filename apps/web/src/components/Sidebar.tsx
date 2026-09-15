@@ -4,7 +4,9 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { useAuth } from '@/lib/AuthProvider';
+import { useHousehold } from '@/lib/useHousehold';
 import { color, radius } from '@/lib/theme';
+import { NotificationBell } from './notifications/NotificationBell';
 
 function IconHome() {
   return (
@@ -57,6 +59,7 @@ const NAV_ITEMS: { href: string; label: string; icon: () => ReactNode }[] = [
 
 export function Sidebar() {
   const { session, loading, signOut } = useAuth();
+  const { membership } = useHousehold();
   const pathname = usePathname();
 
   return (
@@ -74,24 +77,29 @@ export function Sidebar() {
       }}
     >
       <div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 8px', marginBottom: 28 }}>
-          <div
-            style={{
-              width: 28,
-              height: 28,
-              borderRadius: radius.sm,
-              background: color.primary,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#fff',
-              fontWeight: 700,
-              fontSize: 14,
-            }}
-          >
-            P
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 8px', marginBottom: 28 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: radius.sm,
+                background: color.primary,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#fff',
+                fontWeight: 700,
+                fontSize: 14,
+              }}
+            >
+              P
+            </div>
+            <span style={{ fontWeight: 700, fontSize: 15, color: color.foreground }}>Pantry Tracker</span>
           </div>
-          <span style={{ fontWeight: 700, fontSize: 15, color: color.foreground }}>Pantry Tracker</span>
+          {session && membership && membership !== 'loading' && (
+            <NotificationBell householdId={membership.householdId} userId={session.user.id} />
+          )}
         </div>
         {NAV_ITEMS.map((item) => {
           const active = pathname === item.href;

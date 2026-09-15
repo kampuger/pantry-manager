@@ -1,11 +1,12 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getHouseholdNotificationPrefs, updateHouseholdNotificationPrefs } from '@pantry/supabase-client';
+import { getHouseholdNotificationPrefs, updateHouseholdNotificationPrefs, type NotificationPreferences } from '@pantry/supabase-client';
 import { supabase } from '@/lib/supabaseClient';
 import { color, cardStyle, inputStyle, buttonStyle, labelStyle } from '@/lib/theme';
 
 export function NotificationPrefsModal({ householdId, onClose }: { householdId: string; onClose: () => void }) {
+  const [prefs, setPrefs] = useState<NotificationPreferences | null>(null);
   const [notifyDaysProduce, setNotifyDaysProduce] = useState('2');
   const [notifyDaysNonproduce, setNotifyDaysNonproduce] = useState('7');
   const [loading, setLoading] = useState(true);
@@ -15,9 +16,10 @@ export function NotificationPrefsModal({ householdId, onClose }: { householdId: 
 
   useEffect(() => {
     getHouseholdNotificationPrefs(supabase, householdId)
-      .then((prefs) => {
-        setNotifyDaysProduce(String(prefs.notifyDaysProduce));
-        setNotifyDaysNonproduce(String(prefs.notifyDaysNonproduce));
+      .then((loadedPrefs) => {
+        setPrefs(loadedPrefs);
+        setNotifyDaysProduce(String(loadedPrefs.notifyDaysProduce));
+        setNotifyDaysNonproduce(String(loadedPrefs.notifyDaysNonproduce));
         setLoadError(null);
       })
       .catch((err: unknown) => {
@@ -30,9 +32,12 @@ export function NotificationPrefsModal({ householdId, onClose }: { householdId: 
     setSaving(true);
     setError(null);
     try {
+      if (!prefs) throw new Error('Preferences not loaded');
       await updateHouseholdNotificationPrefs(supabase, householdId, {
         notifyDaysProduce: Number(notifyDaysProduce) || 0,
         notifyDaysNonproduce: Number(notifyDaysNonproduce) || 0,
+        emailSendTime: prefs.emailSendTime,
+        emailIntro: prefs.emailIntro,
       });
       onClose();
     } catch (err) {
