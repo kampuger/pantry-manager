@@ -15,7 +15,7 @@ begin
   where name = 'service_role_key';
 
   if v_service_key is null then
-    raise notice 'service_role_key not found in Vault; skipping reminder dispatch';
+    raise warning 'service_role_key not found in Vault; skipping reminder dispatch';
     return;
   end if;
 
@@ -45,7 +45,7 @@ begin
 end;
 $$;
 
-revoke execute on function trigger_due_household_reminders() from public;
+revoke execute on function trigger_due_household_reminders() from public, anon, authenticated;
 
 select cron.schedule(
   'household-reminders-every-15-min',

@@ -9,6 +9,7 @@ import {
 import { daysUntil } from '@pantry/ui';
 import { supabase } from '@/lib/supabaseClient';
 import { color, cardStyle, radius } from '@/lib/theme';
+import { onNotificationsChanged } from '@/lib/notificationEvents';
 
 export function NotificationBell({ householdId, userId }: { householdId: string; userId: string }) {
   const [reminders, setReminders] = useState<PantryItemReminder[]>([]);
@@ -18,20 +19,25 @@ export function NotificationBell({ householdId, userId }: { householdId: string;
   useEffect(() => {
     let cancelled = false;
 
-    getMemberNotificationsEnabled(supabase, householdId, userId).then((value) => {
-      if (!cancelled) setEnabled(value);
-    });
-
-    if (enabled) {
-      getPantryItemReminders(supabase, householdId).then((list) => {
+    async function refresh() {
+      const value = await getMemberNotificationsEnabled(supabase, householdId, userId);
+      if (cancelled) return;
+      setEnabled(value);
+      if (value) {
+        const list = await getPantryItemReminders(supabase, householdId);
         if (!cancelled) setReminders(list);
-      });
+      } else {
+        setReminders([]);
+      }
     }
+
+    refresh();
+    const unsubscribe = onNotificationsChanged(refresh);
 
     return () => {
       cancelled = true;
+      unsubscribe();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [householdId, userId]);
 
   if (!enabled) return null;

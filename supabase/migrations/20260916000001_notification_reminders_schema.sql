@@ -99,7 +99,7 @@ begin
   where pi.household_id = p_household_id
     and pi.is_archived = false
     and pi.expiration_date is not null
-    and (pi.expiration_date - current_date) <= coalesce(
+    and (pi.expiration_date - (now() at time zone 'Asia/Manila')::date) <= coalesce(
       pi.notify_days_before_expiry,
       case when pi.is_produce then h.notify_days_produce else h.notify_days_nonproduce end
     )
@@ -113,7 +113,7 @@ begin
     and (
       pi.is_archived = true
       or pi.expiration_date is null
-      or (pi.expiration_date - current_date) > coalesce(
+      or (pi.expiration_date - (now() at time zone 'Asia/Manila')::date) > coalesce(
         pi.notify_days_before_expiry,
         case when pi.is_produce then h.notify_days_produce else h.notify_days_nonproduce end
       )
@@ -125,7 +125,8 @@ $$;
 -- so only a service-role caller (the Edge Function) can run this, keeping
 -- the owner/admin check for on-demand triggers entirely inside the Edge
 -- Function rather than exposable via a direct client RPC call.
-revoke execute on function refresh_household_reminders(uuid) from public;
+revoke execute on function refresh_household_reminders(uuid) from public, anon, authenticated;
+grant execute on function refresh_household_reminders(uuid) to service_role;
 
 -- =========================================================
 -- ARCHIVE PANTRY ITEM: also clear its reminder row

@@ -6,6 +6,12 @@ const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')!;
 const RESEND_FROM = Deno.env.get('RESEND_FROM_ADDRESS')!;
 
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
+
 function decodeJwtRole(authHeader: string | null): string | null {
   if (!authHeader?.startsWith('Bearer ')) return null;
   const token = authHeader.slice('Bearer '.length);
@@ -26,14 +32,25 @@ function manilaDateString(date: Date): string {
 }
 
 Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders });
+  }
+
   if (req.method !== 'POST') {
-    return new Response('Method not allowed', { status: 405 });
+    return new Response('Method not allowed', { status: 405, headers: corsHeaders });
   }
 
   const authHeader = req.headers.get('Authorization');
   const callerRole = decodeJwtRole(authHeader);
   if (callerRole !== 'service_role' && callerRole !== 'authenticated') {
-    return new Response('Unauthorized', { status: 401 });
+    return new Response('Unauthorized', { status: 401, headers: corsHeaders });
+  }
+
+  if (callerRole === 'service_role') {
+    const token = authHeader!.slice('Bearer '.length);
+    if (token !== SERVICE_ROLE_KEY) {
+      return new Response('Unauthorized', { status: 401, headers: corsHeaders });
+    }
   }
 
   let householdId: string | undefined;
@@ -41,10 +58,10 @@ Deno.serve(async (req) => {
     const payload = await req.json();
     householdId = payload.household_id;
   } catch {
-    return new Response('Invalid JSON body', { status: 400 });
+    return new Response('Invalid JSON body', { status: 400, headers: corsHeaders });
   }
   if (!householdId) {
-    return new Response('household_id is required', { status: 400 });
+    return new Response('household_id is required', { status: 400, headers: corsHeaders });
   }
 
   const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
@@ -53,7 +70,7 @@ Deno.serve(async (req) => {
     const token = authHeader!.slice('Bearer '.length);
     const { data: userData, error: userError } = await admin.auth.getUser(token);
     if (userError || !userData.user) {
-      return new Response('Unauthorized', { status: 401 });
+      return new Response('Unauthorized', { status: 401, headers: corsHeaders });
     }
 
     const { data: membership } = await admin
@@ -64,7 +81,7 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (!membership || (membership.role !== 'OWNER' && membership.role !== 'ADMIN')) {
-      return new Response('Forbidden: only household owners/admins can trigger reminders', { status: 403 });
+      return new Response('Forbidden: only household owners/admins can trigger reminders', { status: 403, headers: corsHeaders });
     }
   }
 
@@ -72,7 +89,7 @@ Deno.serve(async (req) => {
     p_household_id: householdId,
   });
   if (refreshError) {
-    return new Response(`Failed to refresh reminders: ${refreshError.message}`, { status: 500 });
+    return new Response(`Failed to refresh reminders: ${refreshError.message}`, { status: 500, headers: corsHeaders });
   }
 
   const { data: household, error: householdError } = await admin
@@ -81,7 +98,7 @@ Deno.serve(async (req) => {
     .eq('id', householdId)
     .single();
   if (householdError || !household) {
-    return new Response(`Failed to load household: ${householdError?.message ?? 'not found'}`, { status: 500 });
+    return new Response(`Failed to load household: ${householdError?.message ?? 'not found'}`, { status: 500, headers: corsHeaders });
   }
 
   const todayManila = manilaDateString(new Date());
@@ -89,7 +106,7 @@ Deno.serve(async (req) => {
   if (household.last_digest_sent_date === todayManila) {
     return new Response(JSON.stringify({ status: 'already_sent_today' }), {
       status: 200,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
 
@@ -98,13 +115,13 @@ Deno.serve(async (req) => {
     .select('pantry_item_id, pantry_items(name, expiration_date)')
     .eq('household_id', householdId);
   if (remindersError) {
-    return new Response(`Failed to load reminders: ${remindersError.message}`, { status: 500 });
+    return new Response(`Failed to load reminders: ${remindersError.message}`, { status: 500, headers: corsHeaders });
   }
 
   if (!reminders || reminders.length === 0) {
     return new Response(JSON.stringify({ status: 'no_eligible_items' }), {
       status: 200,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
 
@@ -114,13 +131,13 @@ Deno.serve(async (req) => {
     .eq('household_id', householdId)
     .eq('notifications_enabled', true);
   if (membersError) {
-    return new Response(`Failed to load members: ${membersError.message}`, { status: 500 });
+    return new Response(`Failed to load members: ${membersError.message}`, { status: 500, headers: corsHeaders });
   }
 
   if (!members || members.length === 0) {
     return new Response(JSON.stringify({ status: 'no_opted_in_members' }), {
       status: 200,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
 
@@ -175,6 +192,6 @@ Deno.serve(async (req) => {
 
   return new Response(JSON.stringify({ status: 'sent', results }), {
     status: 200,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
 });

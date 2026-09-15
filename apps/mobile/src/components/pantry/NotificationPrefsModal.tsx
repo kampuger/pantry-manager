@@ -11,6 +11,7 @@ import { useAuth } from '../../lib/AuthProvider';
 import { supabase } from '../../lib/supabaseClient';
 import { AppButton } from '../AppButton';
 import { color, cardStyle, inputStyle, font } from '../../lib/theme';
+import { emitNotificationsChanged } from '../../lib/notificationEvents';
 
 export function NotificationPrefsModal({
   householdId,
@@ -62,6 +63,7 @@ export function NotificationPrefsModal({
     setNotificationsEnabled(next);
     try {
       await setMemberNotificationsEnabled(supabase, householdId, session.user.id, next);
+      emitNotificationsChanged();
     } catch (err) {
       setNotificationsEnabled(!next);
       setError(err instanceof Error ? err.message : 'Failed to update your notification setting');

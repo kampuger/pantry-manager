@@ -2011,6 +2011,45 @@ User (or agent, if given a way to run `npx supabase db push` against the linked 
 
 via the Supabase Studio SQL editor, same as every prior migration in this project.
 
+**Before proceeding, decide the email opt-in/opt-out question the final whole-branch review surfaced:** `household_members.notifications_enabled` ships `default true` — every existing household member is enrolled in the email digest the moment this migration lands and the first cron tick fires, with no prior consent step. The spec's problem statement calls this "opt-in," but its own data-model section specifies `default true`; the code correctly followed the data-model section, but the contradiction was never resolved as a deliberate product decision. Given real households may already exist in the live project by the time this deploys, confirm explicitly: is default-on acceptable (a household-wide feature everyone gets unless they turn it off), or should the default flip to `false` (true opt-in, nobody gets email until they turn it on)? This is a one-line change (`alter table household_members alter column notifications_enabled set default false;`, plus updating existing rows if any) — make the call before Step 3, not after.
+
+- [ ] **Step 2b: Verify the cron pipeline is actually alive, not just deployed**
+
+The cron dispatch path has two independent silent-failure modes the final review flagged: the `service_role_key` Vault lookup can be absent (older Supabase project vintages may not pre-seed it), and `net.http_post` is fire-and-forget with nothing reading the response — a bad URL, an auth failure, or a cold-start error at the Edge Function would be invisible. After applying the migrations, run each of these in the Supabase Studio SQL editor and confirm the expected result before moving on:
+
+```sql
+-- 1. Confirm the Vault secret the cron wrapper depends on actually exists
+select name from vault.decrypted_secrets where name = 'service_role_key';
+-- Expected: one row. If empty, trigger_due_household_reminders() will raise
+-- a warning and silently no-op every 15 minutes — the whole feature is dead
+-- until this is fixed, and nothing besides the Postgres log will tell you.
+
+-- 2. After Step 3 deploys the function and at least one 15-minute cron tick
+-- has passed, confirm the scheduled job is actually running:
+select jobid, status, return_message, start_time
+from cron.job_run_details
+join cron.job using (jobid)
+where jobname = 'household-reminders-every-15-min'
+order by start_time desc limit 5;
+-- Expected: recent rows with status 'succeeded'.
+
+-- 3. And confirm the HTTP calls to the Edge Function actually got a 2xx back:
+select status_code, created, content::text
+from net._http_response
+order by created desc limit 5;
+-- Expected: status_code 200 for each recent dispatch. Anything else (or no
+-- rows at all despite job_run_details showing the cron function ran) means
+-- the Edge Function URL, auth, or the function itself is failing silently.
+
+-- 4. Confirm the explicit privilege grants from the final-review fix wave
+-- landed as intended — only service_role should be able to call the
+-- reminders-refresh function directly:
+select has_function_privilege('authenticated', 'refresh_household_reminders(uuid)', 'execute');
+-- Expected: f
+select has_function_privilege('service_role', 'refresh_household_reminders(uuid)', 'execute');
+-- Expected: t
+```
+
 - [ ] **Step 3: Deploy the Edge Function and set its secrets**
 
 ```bash
