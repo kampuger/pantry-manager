@@ -27,6 +27,10 @@ export function groupItemsByLocation(
     .filter((location) => byLocation.has(location))
     .map((location) => {
       const groupItems = byLocation.get(location)!;
+      // 'expired' is deliberately excluded: the header pill reads "N expiring
+      // soon", which is a call to use those items before they go. Items that
+      // are already past their date can no longer be saved, and each one
+      // already carries its own "Expired" badge on the card.
       const expiringSoonCount = groupItems.filter((item) => {
         const status = getExpiryBadgeStatus(item.daysUntilExpiry);
         return status === 'critical' || status === 'warning';

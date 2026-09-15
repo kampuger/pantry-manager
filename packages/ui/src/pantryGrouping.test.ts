@@ -24,4 +24,14 @@ describe('groupItemsByLocation', () => {
       { location: 'PANTRY', itemIds: ['1'], expiringSoonCount: 0 },
     ]);
   });
+
+  it('does not count already-expired items as expiring soon', () => {
+    const items = [
+      { id: '1', storageLocation: 'FRIDGE', daysUntilExpiry: -3 },
+      { id: '2', storageLocation: 'FRIDGE', daysUntilExpiry: 1 },
+    ];
+    expect(groupItemsByLocation(items, ['FRIDGE'])).toEqual([
+      { location: 'FRIDGE', itemIds: ['1', '2'], expiringSoonCount: 1 },
+    ]);
+  });
 });

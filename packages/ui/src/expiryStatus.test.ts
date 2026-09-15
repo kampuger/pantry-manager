@@ -3,8 +3,12 @@ import { getExpiryBadgeStatus } from './expiryStatus';
 describe('getExpiryBadgeStatus', () => {
   it('returns "critical" for items expiring within 2 days', () => {
     expect(getExpiryBadgeStatus(2)).toBe('critical');
-    expect(getExpiryBadgeStatus(0)).toBe('critical');
-    expect(getExpiryBadgeStatus(-1)).toBe('critical'); // already expired
+    expect(getExpiryBadgeStatus(0)).toBe('critical'); // expires today, not yet past
+  });
+
+  it('returns "expired" for items whose expiration date has already passed', () => {
+    expect(getExpiryBadgeStatus(-1)).toBe('expired');
+    expect(getExpiryBadgeStatus(-30)).toBe('expired');
   });
 
   it('returns "warning" for items expiring within 3-7 days', () => {

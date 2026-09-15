@@ -1,12 +1,13 @@
 'use client';
 
-import { getExpiryBadgeStatus, type ExpiryBadgeStatus } from '@pantry/ui';
+import { daysUntil, getExpiryBadgeStatus, type ExpiryBadgeStatus } from '@pantry/ui';
 import type { Database } from '@pantry/supabase-client';
 import { color, radius, cardStyle, badgeStyle, buttonStyle } from '@/lib/theme';
 
 type PantryItemRow = Database['public']['Tables']['pantry_items']['Row'];
 
 const EXPIRY_TONE: Record<ExpiryBadgeStatus, 'destructive' | 'warning' | 'success' | 'muted'> = {
+  expired: 'destructive',
   critical: 'destructive',
   warning: 'warning',
   ok: 'success',
@@ -14,19 +15,16 @@ const EXPIRY_TONE: Record<ExpiryBadgeStatus, 'destructive' | 'warning' | 'succes
 };
 
 // Left accent rail per card — instant scannability without adding colors:
-// every value below is an existing token from lib/theme.
+// every value below is an existing token from lib/theme. 'expired' shares the
+// destructive badge with 'critical' but gets the dark foreground rail, so the
+// two read as different states at a glance.
 const EXPIRY_ACCENT: Record<ExpiryBadgeStatus, string> = {
+  expired: color.foreground,
   critical: color.destructive,
   warning: color.warning,
   ok: color.secondary,
   unknown: color.border,
 };
-
-function daysUntil(dateStr: string | null): number | null {
-  if (!dateStr) return null;
-  const ms = new Date(dateStr).getTime() - Date.now();
-  return Math.floor(ms / (1000 * 60 * 60 * 24));
-}
 
 export function PantryLocationGroup({
   icon,
