@@ -2011,7 +2011,7 @@ User (or agent, if given a way to run `npx supabase db push` against the linked 
 
 via the Supabase Studio SQL editor, same as every prior migration in this project.
 
-**Before proceeding, decide the email opt-in/opt-out question the final whole-branch review surfaced:** `household_members.notifications_enabled` ships `default true` — every existing household member is enrolled in the email digest the moment this migration lands and the first cron tick fires, with no prior consent step. The spec's problem statement calls this "opt-in," but its own data-model section specifies `default true`; the code correctly followed the data-model section, but the contradiction was never resolved as a deliberate product decision. Given real households may already exist in the live project by the time this deploys, confirm explicitly: is default-on acceptable (a household-wide feature everyone gets unless they turn it off), or should the default flip to `false` (true opt-in, nobody gets email until they turn it on)? This is a one-line change (`alter table household_members alter column notifications_enabled set default false;`, plus updating existing rows if any) — make the call before Step 3, not after.
+**Decision made:** email digest defaults to ON (opt-out) — every household member is enrolled the moment this migration lands, and can turn it off in settings. `household_members.notifications_enabled default true` stays as-written; no migration change needed for this.
 
 - [ ] **Step 2b: Verify the cron pipeline is actually alive, not just deployed**
 
