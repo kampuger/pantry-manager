@@ -121,6 +121,18 @@ export interface Database {
         Update: Partial<Database['public']['Tables']['grocery_list_entries']['Row']>;
         Relationships: [];
       };
+      platform_admins: {
+        Row: {
+          user_id: string;
+          granted_by: string | null;
+          granted_at: string;
+        };
+        Insert: Partial<Database['public']['Tables']['platform_admins']['Row']> & {
+          user_id: string;
+        };
+        Update: Partial<Database['public']['Tables']['platform_admins']['Row']>;
+        Relationships: [];
+      };
     };
     // supabase-js's GenericSchema constraint requires these keys to be present
     // (even empty) for its generic table-typing to activate at all — without
@@ -135,6 +147,10 @@ export interface Database {
           p_triggered_by: string;
         };
         Returns: void;
+      };
+      is_platform_admin: {
+        Args: Record<string, never>;
+        Returns: boolean;
       };
     };
   };
