@@ -36,7 +36,7 @@ export default function ResetPasswordPage() {
       return;
     }
 
-    router.push('/pantry');
+    router.push('/');
   }
 
   if (loading) return null;

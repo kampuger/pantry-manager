@@ -123,7 +123,7 @@ export default function LoginPage() {
   // Already signed in? Don't dead-end here — this page's job is to get
   // someone signed in, and once that's true there's nothing left to do.
   useEffect(() => {
-    if (!loading && session) router.replace('/pantry');
+    if (!loading && session) router.replace('/');
   }, [loading, session, router]);
 
   if (loading || session) return null;
@@ -162,7 +162,7 @@ export default function LoginPage() {
       return;
     }
 
-    router.push('/pantry');
+    router.push('/');
   }
 
   const heading = mode === 'sign-in' ? 'Welcome back' : mode === 'sign-up' ? 'Create your account' : 'Reset your password';
