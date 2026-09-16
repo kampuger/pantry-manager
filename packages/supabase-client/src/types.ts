@@ -92,7 +92,15 @@ export interface Database {
           quantity_delta: number;
         };
         Update: Partial<Database['public']['Tables']['inventory_movement_logs']['Row']>;
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: 'inventory_movement_logs_pantry_item_id_fkey';
+            columns: ['pantry_item_id'];
+            isOneToOne: false;
+            referencedRelation: 'pantry_items';
+            referencedColumns: ['id'];
+          },
+        ];
       };
       grocery_list_entries: {
         Row: {
