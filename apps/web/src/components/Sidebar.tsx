@@ -2,17 +2,31 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { checkIsPlatformAdmin } from '@pantry/supabase-client';
+import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/lib/AuthProvider';
 import { useHousehold } from '@/lib/useHousehold';
 import { color, radius } from '@/lib/theme';
 import { NotificationBell } from './notifications/NotificationBell';
-import { NAV_ITEMS } from './navItems';
+import { NAV_ITEMS, IconAdmin } from './navItems';
 
 export function Sidebar() {
   const { session, loading, signOut } = useAuth();
   const { membership } = useHousehold();
   const pathname = usePathname();
   const router = useRouter();
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    if (!session) {
+      setIsAdmin(false);
+      return;
+    }
+    checkIsPlatformAdmin(supabase)
+      .then(setIsAdmin)
+      .catch(() => setIsAdmin(false));
+  }, [session]);
 
   async function handleSignOut() {
     await signOut();
@@ -85,6 +99,28 @@ export function Sidebar() {
             </Link>
           );
         })}
+        {isAdmin && (
+          <Link
+            href="/admin/users"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              padding: '10px 12px',
+              marginBottom: 4,
+              borderRadius: radius.sm,
+              fontSize: 14,
+              fontWeight: pathname === '/admin/users' ? 600 : 500,
+              textDecoration: 'none',
+              color: pathname === '/admin/users' ? color.primary : color.mutedForeground,
+              background: pathname === '/admin/users' ? color.muted : 'transparent',
+              transition: 'background 150ms ease, color 150ms ease',
+            }}
+          >
+            <IconAdmin />
+            Admin
+          </Link>
+        )}
       </div>
       <div style={{ fontSize: 13, borderTop: `1px solid ${color.border}`, paddingTop: 16, padding: '16px 8px 0' }}>
         {loading ? null : session ? (

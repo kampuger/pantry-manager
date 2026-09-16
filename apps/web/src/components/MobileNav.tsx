@@ -3,10 +3,12 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
+import { checkIsPlatformAdmin } from '@pantry/supabase-client';
+import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/lib/AuthProvider';
 import { useHousehold } from '@/lib/useHousehold';
 import { color, radius, shadow } from '@/lib/theme';
-import { NAV_ITEMS } from './navItems';
+import { NAV_ITEMS, IconAdmin } from './navItems';
 import { NotificationBell } from './notifications/NotificationBell';
 
 export const MOBILE_TOP_BAR_HEIGHT = 56;
@@ -43,6 +45,17 @@ export function MobileNav() {
   const [accountOpen, setAccountOpen] = useState(false);
   const navRef = useRef<HTMLDivElement>(null);
   const accountRef = useRef<HTMLDivElement>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    if (!session) {
+      setIsAdmin(false);
+      return;
+    }
+    checkIsPlatformAdmin(supabase)
+      .then(setIsAdmin)
+      .catch(() => setIsAdmin(false));
+  }, [session]);
 
   useEffect(() => {
     if (!navOpen && !accountOpen) return;
@@ -165,6 +178,27 @@ export function MobileNav() {
                     </Link>
                   );
                 })}
+                {isAdmin && (
+                  <Link
+                    href="/admin/users"
+                    onClick={() => setNavOpen(false)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 12,
+                      padding: '12px 14px',
+                      borderRadius: radius.sm,
+                      fontSize: 15,
+                      fontWeight: pathname === '/admin/users' ? 700 : 500,
+                      textDecoration: 'none',
+                      color: pathname === '/admin/users' ? color.primary : color.foreground,
+                      background: pathname === '/admin/users' ? color.muted : 'transparent',
+                    }}
+                  >
+                    <IconAdmin />
+                    Admin
+                  </Link>
+                )}
               </nav>
             </>
           )}
