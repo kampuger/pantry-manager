@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getMemberNotificationsEnabled, getHouseholdNotificationPrefs } from '@pantry/supabase-client';
-import { daysUntil, getExpiryBadgeStatus } from '@pantry/ui';
+import { daysUntil, getExpiryBadgeStatus, formatExpiryDate } from '@pantry/ui';
 import { resolveNotifyThreshold } from '@pantry/core';
 import { supabase } from '@/lib/supabaseClient';
 import { color, cardStyle, radius } from '@/lib/theme';
@@ -174,7 +174,13 @@ export function NotificationBell({ householdId, userId }: { householdId: string;
                   >
                     <div style={{ fontSize: 13, fontWeight: 600, color: color.foreground }}>{r.name}</div>
                     <div style={{ fontSize: 12, color: color.mutedForeground }}>
-                      {days === null ? 'Unknown expiry' : days < 0 ? `Expired ${Math.abs(days)}d ago` : days === 0 ? 'Expires today' : `Expires in ${days}d`}
+                      {days === null
+                        ? 'Unknown expiry'
+                        : days < 0
+                          ? `Expired ${formatExpiryDate(r.expirationDate)}`
+                          : days === 0
+                            ? 'Expires today'
+                            : `Expires in ${days}d`}
                     </div>
                   </button>
                 );

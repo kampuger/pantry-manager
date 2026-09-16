@@ -21,6 +21,7 @@ import { ItemForm, type ItemFormValues } from '@/components/pantry/ItemForm';
 import { PantryLocationGroup } from '@/components/pantry/PantryLocationGroup';
 import { NotificationPrefsModal } from '@/components/pantry/NotificationPrefsModal';
 import { color, radius, cardStyle, inputStyle, buttonStyle, badgeStyle } from '@/lib/theme';
+import { emitNotificationsChanged } from '@/lib/notificationEvents';
 
 type PantryItemRow = Database['public']['Tables']['pantry_items']['Row'];
 
@@ -204,6 +205,10 @@ function PantryPageContent() {
         eventType,
         userId: session!.user.id,
       });
+      // The item is now archived (is_archived = true), so it must drop out of
+      // the bell/badge immediately rather than waiting for the next unrelated
+      // notificationEvents emission (e.g. a prefs save) to trigger a refetch.
+      emitNotificationsChanged();
       await refreshItems(membership.householdId);
     } catch (err) {
       setPageError(

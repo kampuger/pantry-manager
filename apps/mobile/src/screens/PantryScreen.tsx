@@ -21,6 +21,7 @@ import { ItemForm, type ItemFormValues } from '../components/pantry/ItemForm';
 import { PantryLocationGroup } from '../components/pantry/PantryLocationGroup';
 import { NotificationPrefsModal } from '../components/pantry/NotificationPrefsModal';
 import { color, radius, cardStyle, inputStyle, font } from '../lib/theme';
+import { emitNotificationsChanged } from '../lib/notificationEvents';
 
 type PantryItemRow = Database['public']['Tables']['pantry_items']['Row'];
 
@@ -165,6 +166,10 @@ export function PantryScreen() {
         eventType,
         userId: session!.user.id,
       });
+      // The item is now archived (is_archived = true), so it must drop out of
+      // the badge count immediately rather than waiting for the next unrelated
+      // notificationEvents emission (e.g. a prefs save) to trigger a refetch.
+      emitNotificationsChanged();
       await refreshItems(membership.householdId);
     } catch (err) {
       setScreenError(
