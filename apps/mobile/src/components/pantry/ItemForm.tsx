@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { View, Text, TextInput, Pressable, StyleSheet, Switch } from 'react-native';
 import { UNIT_OPTIONS, STORAGE_LOCATION_OPTIONS } from '@pantry/supabase-client';
 import { computeExpiryDate } from '@pantry/core';
+import { formatExpiryDate } from '@pantry/ui';
 import { ChipSelect } from '../ChipSelect';
 import { AppButton } from '../AppButton';
 import { color, radius, cardStyle, inputStyle, font } from '../../lib/theme';
@@ -146,6 +147,8 @@ export function ItemForm({
         onChangeText={setQuantity}
         style={inputStyle}
       />
+      <Text style={styles.fieldLabel}>Unit</Text>
+      <ChipSelect options={UNIT_OPTIONS} value={unit} onChange={setUnit} />
       <TextInput
         placeholder="Price (₱, optional)"
         keyboardType="decimal-pad"
@@ -153,8 +156,6 @@ export function ItemForm({
         onChangeText={setPurchasePrice}
         style={inputStyle}
       />
-      <Text style={styles.fieldLabel}>Unit</Text>
-      <ChipSelect options={UNIT_OPTIONS} value={unit} onChange={setUnit} />
       <Text style={styles.fieldLabel}>Storage</Text>
       <ChipSelect options={STORAGE_LOCATION_OPTIONS} value={storageLocation} onChange={setStorageLocation} />
 
@@ -166,7 +167,7 @@ export function ItemForm({
         {isProduce ? (
           <View>
             <Text style={styles.fieldLabel}>Expires</Text>
-            <Text style={[inputStyle, styles.readonlyValue]}>{computedProduceExpiry} (auto — 7 days after purchase)</Text>
+            <Text style={[inputStyle, styles.readonlyValue]}>{formatExpiryDate(computedProduceExpiry)} (auto — 7 days after purchase)</Text>
           </View>
         ) : (
           <View>

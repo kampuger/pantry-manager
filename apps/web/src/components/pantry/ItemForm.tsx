@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { UNIT_OPTIONS, STORAGE_LOCATION_OPTIONS } from '@pantry/supabase-client';
 import { computeExpiryDate } from '@pantry/core';
+import { formatExpiryDate } from '@pantry/ui';
 import { color, radius, cardStyle, inputStyle, buttonStyle, labelStyle } from '@/lib/theme';
 
 export interface ItemFormValues {
@@ -166,6 +167,14 @@ export function ItemForm({
             style={inputStyle}
           />
         </label>
+        <label style={{ ...labelStyle, flex: '1 1 120px' }}>
+          Unit
+          <select value={unit} onChange={(e) => setUnit(e.target.value)} style={inputStyle}>
+            {UNIT_OPTIONS.map((u) => (
+              <option key={u} value={u}>{u}</option>
+            ))}
+          </select>
+        </label>
         <label style={{ ...labelStyle, flex: '1 1 110px', maxWidth: 160 }}>
           Price (₱, optional)
           <input
@@ -177,14 +186,6 @@ export function ItemForm({
             onChange={(e) => setPurchasePrice(e.target.value)}
             style={inputStyle}
           />
-        </label>
-        <label style={{ ...labelStyle, flex: '1 1 120px' }}>
-          Unit
-          <select value={unit} onChange={(e) => setUnit(e.target.value)} style={inputStyle}>
-            {UNIT_OPTIONS.map((u) => (
-              <option key={u} value={u}>{u}</option>
-            ))}
-          </select>
         </label>
         <label style={{ ...labelStyle, flex: '1 1 140px' }}>
           Storage
@@ -220,7 +221,7 @@ export function ItemForm({
           <div style={labelStyle}>
             Expires
             <div style={{ ...inputStyle, background: color.card, color: color.mutedForeground }}>
-              {computedProduceExpiry} <span style={{ color: color.mutedForeground }}>(auto — 7 days after purchase)</span>
+              {formatExpiryDate(computedProduceExpiry)} <span style={{ color: color.mutedForeground }}>(auto — 7 days after purchase)</span>
             </div>
           </div>
         ) : (

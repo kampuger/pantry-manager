@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { daysUntil, getExpiryBadgeStatus, type ExpiryBadgeStatus } from '@pantry/ui';
+import { daysUntil, getExpiryBadgeStatus, formatExpiryDate, type ExpiryBadgeStatus } from '@pantry/ui';
 import { resolveNotifyThreshold, formatPHP, type HouseholdNotifyDefaults } from '@pantry/core';
 import type { Database } from '@pantry/supabase-client';
 import { color, radius, cardStyle, badgeStyle, buttonStyle } from '@/lib/theme';
@@ -154,7 +154,7 @@ export function PantryLocationGroup({
                     {item.quantity} {item.unit}
                   </span>
                   {item.purchase_price != null && <span>{formatPHP(item.purchase_price)}</span>}
-                  {item.expiration_date && <span>Expires {item.expiration_date}</span>}
+                  {item.expiration_date && <span>Expires: {formatExpiryDate(item.expiration_date)}</span>}
                 </div>
                 <div
                   style={{
