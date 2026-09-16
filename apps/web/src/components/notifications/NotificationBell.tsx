@@ -6,6 +6,7 @@ import { getMemberNotificationsEnabled, getHouseholdNotificationPrefs } from '@p
 import { daysUntil, getExpiryBadgeStatus, formatExpiryDate } from '@pantry/ui';
 import { resolveNotifyThreshold } from '@pantry/core';
 import { supabase } from '@/lib/supabaseClient';
+import { useIsMobile } from '@/lib/useIsMobile';
 import { color, cardStyle, radius } from '@/lib/theme';
 import { onNotificationsChanged } from '@/lib/notificationEvents';
 
@@ -17,6 +18,7 @@ interface ReminderRow {
 
 export function NotificationBell({ householdId, userId }: { householdId: string; userId: string }) {
   const router = useRouter();
+  const isMobile = useIsMobile();
   const containerRef = useRef<HTMLDivElement>(null);
   const [reminders, setReminders] = useState<ReminderRow[]>([]);
   const [enabled, setEnabled] = useState(true);
@@ -142,8 +144,14 @@ export function NotificationBell({ householdId, userId }: { householdId: string;
             ...cardStyle,
             position: 'absolute',
             top: '110%',
-            left: 0,
+            // On mobile the bell sits near the right edge of the top bar, so
+            // a left-anchored dropdown runs off-screen — anchor from the
+            // right there instead. Desktop keeps the original left anchor
+            // (the bell sits inside the left-side Sidebar).
+            ...(isMobile ? { right: 0 } : { left: 0 }),
             width: 260,
+            maxWidth: 'calc(100vw - 24px)',
+            boxSizing: 'border-box',
             maxHeight: 320,
             overflowY: 'auto',
             padding: 12,
