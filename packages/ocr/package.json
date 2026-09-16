@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "expo-file-system": "~17.0.1",
+    "expo-file-system": "~57.0.7",
     "@react-native-ml-kit/text-recognition": "^1.5.2",
     "tesseract.js": "^5.1.0"
   },

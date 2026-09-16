@@ -1,15 +1,18 @@
 {
   "expo": {
-    "name": "mobile",
-    "slug": "mobile",
+    "name": "Pantry Tracker",
+    "slug": "pantry-tracker",
+    "owner": "kampuger",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.kampuger.pantrytracker"
     },
     "android": {
+      "package": "com.kampuger.pantrytracker",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -23,6 +26,11 @@
     },
     "plugins": [
       "expo-font"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "6eeec1f6-9b87-4a7b-8a68-1cc00dba2cd1"
+      }
+    }
   }
 }
