@@ -1,31 +1,169 @@
+import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { formatPHP } from '@pantry/core';
-import { budgetSeed } from '../data/seed';
+import {
+  formatPHP,
+  resolveNotifyThreshold,
+  computeWastedValue,
+  type HouseholdNotifyDefaults,
+  type MovementLogRecord,
+} from '@pantry/core';
+import { daysUntil, getExpiryBadgeStatus } from '@pantry/ui';
+import { getHouseholdNotificationPrefs, type Database } from '@pantry/supabase-client';
+import { supabase } from '../lib/supabaseClient';
+import { useAuth } from '../lib/AuthProvider';
+import { useHousehold } from '../lib/useHousehold';
 import { color, cardStyle, font } from '../lib/theme';
 
+type PantryItemRow = Database['public']['Tables']['pantry_items']['Row'];
+
+interface SplitRow {
+  label: string;
+  value: number;
+  count: number;
+  tone: string;
+}
+
+function SplitBars({ rows }: { rows: SplitRow[] }) {
+  const max = Math.max(1, ...rows.map((r) => r.value));
+  return (
+    <View style={{ gap: 14 }}>
+      {rows.map((row) => (
+        <View key={row.label}>
+          <View style={styles.splitRow}>
+            <Text style={styles.splitLabel}>
+              {row.label} <Text style={styles.splitCount}>({row.count})</Text>
+            </Text>
+            <Text style={styles.splitValue}>{formatPHP(row.value)}</Text>
+          </View>
+          <View style={styles.barTrack}>
+            <View style={[styles.barFill, { width: `${(row.value / max) * 100}%`, backgroundColor: row.tone }]} />
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 export function FinancialsScreen() {
+  const { session } = useAuth();
+  const { membership } = useHousehold();
+  const [items, setItems] = useState<PantryItemRow[]>([]);
+  const [wastedLogs, setWastedLogs] = useState<MovementLogRecord[]>([]);
+  const [notifyPrefs, setNotifyPrefs] = useState<HouseholdNotifyDefaults>({
+    notifyDaysProduce: 2,
+    notifyDaysNonproduce: 7,
+  });
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!membership || membership === 'loading') return;
+    const householdId = membership.householdId;
+
+    supabase
+      .from('pantry_items')
+      .select('*')
+      .eq('household_id', householdId)
+      .eq('is_archived', false)
+      .then(({ data, error }) => {
+        if (error) setLoadError(`Couldn't load your pantry: ${error.message}`);
+        else setItems(data ?? []);
+      });
+
+    supabase
+      .from('inventory_movement_logs')
+      .select('event_type, value_delta')
+      .eq('household_id', householdId)
+      .in('event_type', ['EXPIRED', 'SPOILED_DISCARDED'])
+      .then(({ data, error }) => {
+        if (error) setLoadError(`Couldn't load movement history: ${error.message}`);
+        else setWastedLogs((data ?? []).map((row) => ({ eventType: row.event_type, valueDelta: row.value_delta })));
+      });
+
+    getHouseholdNotificationPrefs(supabase, householdId).then((prefs) => {
+      setNotifyPrefs({ notifyDaysProduce: prefs.notifyDaysProduce, notifyDaysNonproduce: prefs.notifyDaysNonproduce });
+    });
+  }, [membership]);
+
+  if (!session || !membership || membership === 'loading') {
+    return (
+      <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
+        <Text style={styles.title}>Financial snapshot</Text>
+        <Text style={styles.meta}>Loading…</Text>
+      </ScrollView>
+    );
+  }
+
+  const totalValue = items.reduce((sum, item) => sum + (item.purchase_price ?? 0), 0);
+
+  const produceItems = items.filter((i) => i.is_produce);
+  const nonProduceItems = items.filter((i) => !i.is_produce);
+  const typeRows: SplitRow[] = [
+    {
+      label: 'Produce',
+      value: produceItems.reduce((sum, i) => sum + (i.purchase_price ?? 0), 0),
+      count: produceItems.length,
+      tone: color.primary,
+    },
+    {
+      label: 'Non-produce',
+      value: nonProduceItems.reduce((sum, i) => sum + (i.purchase_price ?? 0), 0),
+      count: nonProduceItems.length,
+      tone: color.secondary,
+    },
+  ];
+
+  const itemsWithStatus = items.map((item) => {
+    const threshold = resolveNotifyThreshold(
+      { isProduce: item.is_produce, notifyDaysBeforeExpiry: item.notify_days_before_expiry },
+      notifyPrefs
+    );
+    const status = getExpiryBadgeStatus(daysUntil(item.expiration_date), threshold);
+    return { item, expiringSoon: status === 'warning' || status === 'expired' };
+  });
+  const expiringItems = itemsWithStatus.filter((x) => x.expiringSoon).map((x) => x.item);
+  const notExpiringItems = itemsWithStatus.filter((x) => !x.expiringSoon).map((x) => x.item);
+  const expiryRows: SplitRow[] = [
+    {
+      label: 'Expiring soon',
+      value: expiringItems.reduce((sum, i) => sum + (i.purchase_price ?? 0), 0),
+      count: expiringItems.length,
+      tone: color.warning,
+    },
+    {
+      label: 'Not expiring soon',
+      value: notExpiringItems.reduce((sum, i) => sum + (i.purchase_price ?? 0), 0),
+      count: notExpiringItems.length,
+      tone: color.success,
+    },
+  ];
+
+  const wastedValue = computeWastedValue(wastedLogs);
+
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
       <Text style={styles.title}>Financial snapshot</Text>
+      <Text style={styles.subtitle}>A running summary of what&apos;s currently in your pantry, and what&apos;s been thrown away.</Text>
+
+      {loadError && <Text style={styles.errorBanner}>{loadError}</Text>}
 
       <View style={styles.summaryCard}>
-        <Text style={styles.label}>Monthly budget</Text>
-        <Text style={styles.value}>{formatPHP(budgetSeed.monthlyBudget)}</Text>
+        <Text style={styles.label}>Total pantry value ({items.length} active items)</Text>
+        <Text style={styles.value}>{formatPHP(totalValue)}</Text>
       </View>
 
       <View style={styles.panel}>
-        <Text style={styles.panelTitle}>Spending</Text>
-        {[
-          { label: 'Groceries', amount: 920 },
-          { label: 'Meat & Fish', amount: 630 },
-          { label: 'Dairy', amount: 280 },
-          { label: 'Produce', amount: 310 },
-        ].map((row) => (
-          <View key={row.label} style={styles.row}>
-            <Text style={styles.rowLabel}>{row.label}</Text>
-            <Text style={styles.amount}>{formatPHP(row.amount)}</Text>
-          </View>
-        ))}
+        <Text style={styles.panelTitle}>By item type</Text>
+        <SplitBars rows={typeRows} />
+      </View>
+
+      <View style={styles.panel}>
+        <Text style={styles.panelTitle}>By expiry status</Text>
+        <SplitBars rows={expiryRows} />
+      </View>
+
+      <View style={styles.wastedCard}>
+        <Text style={styles.wastedLabel}>Wasted (lifetime — expired/discarded items)</Text>
+        <Text style={styles.wastedValue}>{formatPHP(wastedValue)}</Text>
       </View>
     </ScrollView>
   );
@@ -35,12 +173,36 @@ const styles = StyleSheet.create({
   screen: { backgroundColor: color.background },
   container: { padding: 20, gap: 16 },
   title: { fontSize: 26, fontFamily: font.bold, color: color.foreground },
+  subtitle: { fontSize: 13, color: color.mutedForeground, fontFamily: font.regular, marginTop: -8 },
+  meta: { color: color.mutedForeground, fontSize: 14, fontFamily: font.regular },
+  errorBanner: {
+    backgroundColor: color.destructiveBg,
+    borderWidth: 1,
+    borderColor: color.destructive,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    color: color.destructive,
+    fontSize: 13,
+    fontFamily: font.regular,
+  },
   summaryCard: { ...cardStyle, padding: 20 },
   label: { color: color.mutedForeground, fontSize: 12, fontFamily: font.medium },
   value: { marginTop: 8, fontSize: 28, fontFamily: font.bold, color: color.foreground },
-  panel: { ...cardStyle, padding: 16 },
-  panelTitle: { fontSize: 16, fontFamily: font.bold, color: color.foreground, marginBottom: 12 },
-  row: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8 },
-  rowLabel: { fontFamily: font.regular, color: color.foreground },
-  amount: { fontFamily: font.bold, color: color.foreground },
+  panel: { ...cardStyle, padding: 16, gap: 14 },
+  panelTitle: { fontSize: 16, fontFamily: font.bold, color: color.foreground },
+  splitRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
+  splitLabel: { fontSize: 14, fontFamily: font.regular, color: color.foreground },
+  splitCount: { color: color.mutedForeground, fontFamily: font.regular, fontSize: 13 },
+  splitValue: { fontFamily: font.bold, color: color.foreground },
+  barTrack: { backgroundColor: color.muted, borderRadius: 999, height: 8, overflow: 'hidden', marginTop: 6 },
+  barFill: { height: '100%', borderRadius: 999 },
+  wastedCard: {
+    ...cardStyle,
+    padding: 20,
+    backgroundColor: color.destructiveBg,
+    borderColor: color.destructive,
+  },
+  wastedLabel: { color: color.destructive, fontSize: 12, fontFamily: font.medium },
+  wastedValue: { marginTop: 8, fontSize: 24, fontFamily: font.bold, color: color.destructive },
 });

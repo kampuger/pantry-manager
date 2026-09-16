@@ -1,52 +1,201 @@
-import { formatPHP } from '@pantry/core';
-import { budgetSeed, financialBreakdown } from '@/data/seed';
+'use client';
+
+import { useEffect, useState } from 'react';
+import {
+  formatPHP,
+  resolveNotifyThreshold,
+  computeWastedValue,
+  type HouseholdNotifyDefaults,
+  type MovementLogRecord,
+} from '@pantry/core';
+import { daysUntil, getExpiryBadgeStatus } from '@pantry/ui';
+import { getHouseholdNotificationPrefs, type Database } from '@pantry/supabase-client';
+import { supabase } from '@/lib/supabaseClient';
+import { useAuth } from '@/lib/AuthProvider';
+import { useHousehold } from '@/lib/useHousehold';
 import { color, cardStyle } from '@/lib/theme';
 
-const maxCategoryValue = Math.max(...financialBreakdown.map((row) => row.value));
+type PantryItemRow = Database['public']['Tables']['pantry_items']['Row'];
+
+interface SplitRow {
+  label: string;
+  value: number;
+  count: number;
+  tone: string;
+}
+
+function SplitBars({ rows }: { rows: SplitRow[] }) {
+  const max = Math.max(1, ...rows.map((r) => r.value));
+  return (
+    <div style={{ display: 'grid', gap: 14 }}>
+      {rows.map((row) => (
+        <div key={row.label}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, fontSize: 14 }}>
+            <span>
+              {row.label} <span style={{ color: color.mutedForeground }}>({row.count})</span>
+            </span>
+            <strong>{formatPHP(row.value)}</strong>
+          </div>
+          <div style={{ background: color.muted, borderRadius: 999, height: 8, overflow: 'hidden' }}>
+            <div
+              style={{
+                width: `${(row.value / max) * 100}%`,
+                background: row.tone,
+                height: '100%',
+                borderRadius: 999,
+              }}
+            />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function FinancialsPage() {
-  const metrics = [
-    { label: 'Monthly budget', value: formatPHP(budgetSeed.monthlyBudget) },
-    { label: 'Spent', value: formatPHP(budgetSeed.spentThisMonth) },
-    { label: 'Remaining', value: formatPHP(budgetSeed.remaining) },
-    { label: 'Pantry efficiency', value: `${budgetSeed.pantryEfficiency}%` },
+  const { session, loading: authLoading } = useAuth();
+  const { membership } = useHousehold();
+  const [items, setItems] = useState<PantryItemRow[]>([]);
+  const [wastedLogs, setWastedLogs] = useState<MovementLogRecord[]>([]);
+  const [notifyPrefs, setNotifyPrefs] = useState<HouseholdNotifyDefaults>({
+    notifyDaysProduce: 2,
+    notifyDaysNonproduce: 7,
+  });
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!membership || membership === 'loading') return;
+    const householdId = membership.householdId;
+
+    supabase
+      .from('pantry_items')
+      .select('*')
+      .eq('household_id', householdId)
+      .eq('is_archived', false)
+      .then(({ data, error }) => {
+        if (error) setLoadError(`Couldn't load your pantry: ${error.message}`);
+        else setItems(data ?? []);
+      });
+
+    supabase
+      .from('inventory_movement_logs')
+      .select('event_type, value_delta')
+      .eq('household_id', householdId)
+      .in('event_type', ['EXPIRED', 'SPOILED_DISCARDED'])
+      .then(({ data, error }) => {
+        if (error) setLoadError(`Couldn't load movement history: ${error.message}`);
+        else setWastedLogs((data ?? []).map((row) => ({ eventType: row.event_type, valueDelta: row.value_delta })));
+      });
+
+    getHouseholdNotificationPrefs(supabase, householdId).then((prefs) => {
+      setNotifyPrefs({ notifyDaysProduce: prefs.notifyDaysProduce, notifyDaysNonproduce: prefs.notifyDaysNonproduce });
+    });
+  }, [membership]);
+
+  if (authLoading) return null;
+
+  if (!session) {
+    return (
+      <div>
+        <h1 style={{ fontSize: 28, margin: 0, letterSpacing: '-0.02em' }}>Financial snapshot</h1>
+        <p style={{ color: color.mutedForeground, marginTop: 8, fontSize: 14 }}>
+          Viewing demo data —{' '}
+          <a href="/login" style={{ color: color.primary, fontWeight: 600 }}>
+            sign in
+          </a>{' '}
+          to see your household&apos;s real numbers.
+        </p>
+      </div>
+    );
+  }
+
+  if (!membership || membership === 'loading') {
+    return <p style={{ color: color.mutedForeground }}>Loading…</p>;
+  }
+
+  const totalValue = items.reduce((sum, item) => sum + (item.purchase_price ?? 0), 0);
+
+  const produceItems = items.filter((i) => i.is_produce);
+  const nonProduceItems = items.filter((i) => !i.is_produce);
+  const typeRows: SplitRow[] = [
+    {
+      label: 'Produce',
+      value: produceItems.reduce((sum, i) => sum + (i.purchase_price ?? 0), 0),
+      count: produceItems.length,
+      tone: color.primary,
+    },
+    {
+      label: 'Non-produce',
+      value: nonProduceItems.reduce((sum, i) => sum + (i.purchase_price ?? 0), 0),
+      count: nonProduceItems.length,
+      tone: color.secondary,
+    },
   ];
+
+  // "Expiring soon" matches the same Warning+Expired grouping as the
+  // Pantry page's own filter, for consistent terminology across the app.
+  const itemsWithStatus = items.map((item) => {
+    const threshold = resolveNotifyThreshold(
+      { isProduce: item.is_produce, notifyDaysBeforeExpiry: item.notify_days_before_expiry },
+      notifyPrefs
+    );
+    const status = getExpiryBadgeStatus(daysUntil(item.expiration_date), threshold);
+    return { item, expiringSoon: status === 'warning' || status === 'expired' };
+  });
+  const expiringItems = itemsWithStatus.filter((x) => x.expiringSoon).map((x) => x.item);
+  const notExpiringItems = itemsWithStatus.filter((x) => !x.expiringSoon).map((x) => x.item);
+  const expiryRows: SplitRow[] = [
+    {
+      label: 'Expiring soon',
+      value: expiringItems.reduce((sum, i) => sum + (i.purchase_price ?? 0), 0),
+      count: expiringItems.length,
+      tone: color.warning,
+    },
+    {
+      label: 'Not expiring soon',
+      value: notExpiringItems.reduce((sum, i) => sum + (i.purchase_price ?? 0), 0),
+      count: notExpiringItems.length,
+      tone: color.success,
+    },
+  ];
+
+  const wastedValue = computeWastedValue(wastedLogs);
 
   return (
     <div>
-      <h1>Financial snapshot</h1>
+      <h1 style={{ fontSize: 28, margin: 0, letterSpacing: '-0.02em' }}>Financial snapshot</h1>
+      <p style={{ margin: '4px 0 0', fontSize: 14, color: color.mutedForeground }}>
+        A running summary of what&apos;s currently in your pantry, and what&apos;s been thrown away.
+      </p>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 16, marginTop: 20, maxWidth: 720 }}>
-        {metrics.map((m) => (
-          <div key={m.label} style={{ ...cardStyle, padding: 20 }}>
-            <div style={{ color: color.mutedForeground, fontSize: 13 }}>{m.label}</div>
-            <div style={{ fontSize: 26, fontWeight: 700, marginTop: 8 }}>{m.value}</div>
-          </div>
-        ))}
+      {loadError && (
+        <p style={{ ...cardStyle, boxShadow: 'none', background: color.destructiveBg, borderColor: color.destructive, marginTop: 16, padding: '12px 16px', color: color.destructive, fontSize: 13 }}>
+          {loadError}
+        </p>
+      )}
+
+      <div style={{ ...cardStyle, marginTop: 20, padding: 24, maxWidth: 560 }}>
+        <div style={{ color: color.mutedForeground, fontSize: 13 }}>Total pantry value ({items.length} active items)</div>
+        <div style={{ fontSize: 32, fontWeight: 700, marginTop: 8 }}>{formatPHP(totalValue)}</div>
       </div>
 
       <div style={{ ...cardStyle, marginTop: 20, padding: 24, maxWidth: 560 }}>
-        <h2 style={{ marginTop: 0, fontSize: 16 }}>Spending by category</h2>
-        <div style={{ display: 'grid', gap: 14, marginTop: 16 }}>
-          {financialBreakdown.map((row) => (
-            <div key={row.category}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, fontSize: 14 }}>
-                <span>{row.category}</span>
-                <strong>{formatPHP(row.value)}</strong>
-              </div>
-              <div style={{ background: color.muted, borderRadius: 999, height: 8, overflow: 'hidden' }}>
-                <div
-                  style={{
-                    width: `${(row.value / maxCategoryValue) * 100}%`,
-                    background: color.primary,
-                    height: '100%',
-                    borderRadius: 999,
-                  }}
-                />
-              </div>
-            </div>
-          ))}
+        <h2 style={{ marginTop: 0, fontSize: 16 }}>By item type</h2>
+        <div style={{ marginTop: 16 }}>
+          <SplitBars rows={typeRows} />
         </div>
+      </div>
+
+      <div style={{ ...cardStyle, marginTop: 20, padding: 24, maxWidth: 560 }}>
+        <h2 style={{ marginTop: 0, fontSize: 16 }}>By expiry status</h2>
+        <div style={{ marginTop: 16 }}>
+          <SplitBars rows={expiryRows} />
+        </div>
+      </div>
+
+      <div style={{ ...cardStyle, marginTop: 20, padding: 24, maxWidth: 560, background: color.destructiveBg, borderColor: color.destructive }}>
+        <div style={{ color: color.destructive, fontSize: 13 }}>Wasted (lifetime — expired/discarded items)</div>
+        <div style={{ fontSize: 26, fontWeight: 700, marginTop: 8, color: color.destructive }}>{formatPHP(wastedValue)}</div>
       </div>
     </div>
   );
