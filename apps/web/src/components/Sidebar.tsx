@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { useAuth } from '@/lib/AuthProvider';
 import { useHousehold } from '@/lib/useHousehold';
@@ -61,6 +61,12 @@ export function Sidebar() {
   const { session, loading, signOut } = useAuth();
   const { membership } = useHousehold();
   const pathname = usePathname();
+  const router = useRouter();
+
+  async function handleSignOut() {
+    await signOut();
+    router.push('/login');
+  }
 
   return (
     <nav
@@ -136,7 +142,7 @@ export function Sidebar() {
               {session.user.email}
             </div>
             <button
-              onClick={() => signOut()}
+              onClick={() => handleSignOut()}
               style={{
                 cursor: 'pointer',
                 border: `1px solid ${color.border}`,
