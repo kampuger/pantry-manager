@@ -2,7 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { getFreshnessFlag, resolveNotifyThreshold, type HouseholdNotifyDefaults } from '@pantry/core';
+import { getFreshnessFlag, resolveNotifyThreshold, formatPHP, type HouseholdNotifyDefaults } from '@pantry/core';
 import { daysUntil, getExpiryBadgeStatus, groupItemsByLocation } from '@pantry/ui';
 import {
   addPantryItem,
@@ -169,6 +169,7 @@ function PantryPageContent() {
       isProduce: values.isProduce,
       expirationDate: values.expirationDate,
       notifyDaysBeforeExpiry: values.notifyDaysOverride,
+      purchasePrice: values.purchasePrice,
     });
     setShowAddForm(false);
     await refreshItems(membership.householdId);
@@ -184,6 +185,7 @@ function PantryPageContent() {
       isProduce: values.isProduce,
       expirationDate: values.expirationDate,
       notifyDaysBeforeExpiry: values.notifyDaysOverride,
+      purchasePrice: values.purchasePrice,
     });
     setEditingItem(null);
     await refreshItems(membership.householdId);
@@ -209,6 +211,11 @@ function PantryPageContent() {
       );
     }
   }
+
+  // Reflects every active item regardless of the search/filter above — those
+  // are view conveniences, not a redefinition of "what my pantry is worth."
+  const totalValue = items.reduce((sum, item) => sum + (item.purchase_price ?? 0), 0);
+  const hasAnyPriced = items.some((item) => item.purchase_price != null);
 
   const trimmedQuery = searchQuery.trim().toLowerCase();
   const visibleItems = items.filter((item) => {
@@ -248,7 +255,14 @@ function PantryPageContent() {
           flexWrap: 'wrap',
         }}
       >
-        <h1 style={{ fontSize: 28, margin: 0, letterSpacing: '-0.02em' }}>Pantry Inventory</h1>
+        <div>
+          <h1 style={{ fontSize: 28, margin: 0, letterSpacing: '-0.02em' }}>Pantry Inventory</h1>
+          {hasAnyPriced && (
+            <p style={{ margin: '4px 0 0', fontSize: 14, color: color.mutedForeground }}>
+              Total value: <strong style={{ color: color.foreground }}>{formatPHP(totalValue)}</strong>
+            </p>
+          )}
+        </div>
         {membership && membership !== 'loading' && (
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button
@@ -394,6 +408,7 @@ function PantryPageContent() {
                     isProduce: editingItem.is_produce,
                     expirationDate: editingItem.expiration_date,
                     notifyDaysOverride: editingItem.notify_days_before_expiry,
+                    purchasePrice: editingItem.purchase_price,
                     purchaseDate: editingItem.purchase_date,
                   }}
                   onSubmit={handleEditSave}

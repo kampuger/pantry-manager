@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View, ActivityIndicator, Pressable, TextInput, Modal } from 'react-native';
-import { getFreshnessFlag, resolveNotifyThreshold, type HouseholdNotifyDefaults } from '@pantry/core';
+import { getFreshnessFlag, resolveNotifyThreshold, formatPHP, type HouseholdNotifyDefaults } from '@pantry/core';
 import { daysUntil, getExpiryBadgeStatus, groupItemsByLocation } from '@pantry/ui';
 import {
   addPantryItem,
@@ -130,6 +130,7 @@ export function PantryScreen() {
       isProduce: values.isProduce,
       expirationDate: values.expirationDate,
       notifyDaysBeforeExpiry: values.notifyDaysOverride,
+      purchasePrice: values.purchasePrice,
     });
     setShowAddForm(false);
     await refreshItems(membership.householdId);
@@ -145,6 +146,7 @@ export function PantryScreen() {
       isProduce: values.isProduce,
       expirationDate: values.expirationDate,
       notifyDaysBeforeExpiry: values.notifyDaysOverride,
+      purchasePrice: values.purchasePrice,
     });
     setEditingItem(null);
     await refreshItems(membership.householdId);
@@ -170,6 +172,11 @@ export function PantryScreen() {
       );
     }
   }
+
+  // Reflects every active item regardless of the search/filter below — those
+  // are view conveniences, not a redefinition of "what my pantry is worth."
+  const totalValue = items.reduce((sum, item) => sum + (item.purchase_price ?? 0), 0);
+  const hasAnyPriced = items.some((item) => item.purchase_price != null);
 
   const trimmedQuery = searchQuery.trim().toLowerCase();
   const visibleItems = items.filter((item) => {
@@ -201,7 +208,14 @@ export function PantryScreen() {
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
       <View style={styles.topHeaderRow}>
-        <Text style={styles.title}>Pantry Inventory</Text>
+        <View>
+          <Text style={styles.title}>Pantry Inventory</Text>
+          {hasAnyPriced && (
+            <Text style={styles.totalValue}>
+              Total value: <Text style={styles.totalValueAmount}>{formatPHP(totalValue)}</Text>
+            </Text>
+          )}
+        </View>
         {membership && membership !== 'loading' && (
           <View style={styles.headerButtons}>
             <Pressable
@@ -282,6 +296,7 @@ export function PantryScreen() {
                       isProduce: editingItem.is_produce,
                       expirationDate: editingItem.expiration_date,
                       notifyDaysOverride: editingItem.notify_days_before_expiry,
+                      purchasePrice: editingItem.purchase_price,
                       purchaseDate: editingItem.purchase_date,
                     }}
                     onSubmit={handleEditSave}
@@ -327,6 +342,8 @@ const styles = StyleSheet.create({
   gearButtonPressed: { backgroundColor: color.muted },
   gearIcon: { fontSize: 18 },
   title: { flexShrink: 1, fontSize: 26, fontFamily: font.bold, color: color.foreground, letterSpacing: -0.5 },
+  totalValue: { fontSize: 14, color: color.mutedForeground, fontFamily: font.regular, marginTop: 2 },
+  totalValueAmount: { color: color.foreground, fontFamily: font.bold },
   toolbarRow: { flexDirection: 'row', gap: 10, alignItems: 'center' },
   searchInput: { flex: 1 },
   filterChip: {

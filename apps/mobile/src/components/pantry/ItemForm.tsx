@@ -14,6 +14,7 @@ export interface ItemFormValues {
   isProduce: boolean;
   expirationDate: string | null;
   notifyDaysOverride: number | null;
+  purchasePrice: number | null;
 }
 
 export interface ItemFormInitialValues {
@@ -24,6 +25,7 @@ export interface ItemFormInitialValues {
   isProduce: boolean;
   expirationDate: string | null;
   notifyDaysOverride: number | null;
+  purchasePrice: number | null;
   purchaseDate: string | null;
 }
 
@@ -35,6 +37,7 @@ const EMPTY_VALUES: ItemFormInitialValues = {
   isProduce: true,
   expirationDate: null,
   notifyDaysOverride: null,
+  purchasePrice: null,
   purchaseDate: null,
 };
 
@@ -53,6 +56,9 @@ export function ItemForm({
 }) {
   const [name, setName] = useState(initialValues.name);
   const [quantity, setQuantity] = useState(String(initialValues.quantity));
+  const [purchasePrice, setPurchasePrice] = useState(
+    initialValues.purchasePrice != null ? String(initialValues.purchasePrice) : ''
+  );
   const [unit, setUnit] = useState(initialValues.unit);
   const [storageLocation, setStorageLocation] = useState(initialValues.storageLocation);
   const [isProduce, setIsProduce] = useState(initialValues.isProduce);
@@ -69,6 +75,7 @@ export function ItemForm({
   function resetFields() {
     setName(initialValues.name);
     setQuantity(String(initialValues.quantity));
+    setPurchasePrice(initialValues.purchasePrice != null ? String(initialValues.purchasePrice) : '');
     setUnit(initialValues.unit);
     setStorageLocation(initialValues.storageLocation);
     setIsProduce(initialValues.isProduce);
@@ -109,6 +116,7 @@ export function ItemForm({
         isProduce,
         expirationDate,
         notifyDaysOverride: notifyDaysOverride ? Number(notifyDaysOverride) : null,
+        purchasePrice: purchasePrice ? Number(purchasePrice) : null,
       });
       // Add mode only: clear the fields so a second accidental tap can't
       // create a duplicate row. The edit form is about to unmount (Fix 1), so
@@ -136,6 +144,13 @@ export function ItemForm({
         keyboardType="numeric"
         value={quantity}
         onChangeText={setQuantity}
+        style={inputStyle}
+      />
+      <TextInput
+        placeholder="Price (₱, optional)"
+        keyboardType="decimal-pad"
+        value={purchasePrice}
+        onChangeText={setPurchasePrice}
         style={inputStyle}
       />
       <Text style={styles.fieldLabel}>Unit</Text>

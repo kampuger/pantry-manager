@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { daysUntil, getExpiryBadgeStatus, type ExpiryBadgeStatus } from '@pantry/ui';
-import { resolveNotifyThreshold, type HouseholdNotifyDefaults } from '@pantry/core';
+import { resolveNotifyThreshold, formatPHP, type HouseholdNotifyDefaults } from '@pantry/core';
 import type { Database } from '@pantry/supabase-client';
 import { Badge } from '../Badge';
 import { AppButton } from '../AppButton';
@@ -97,6 +97,7 @@ export function PantryLocationGroup({
                 <Text style={[styles.qtyChip, { backgroundColor: mutedTone.background, color: mutedTone.color }]}>
                   {item.quantity} {item.unit}
                 </Text>
+                {item.purchase_price != null ? <Text style={styles.meta}>{formatPHP(item.purchase_price)}</Text> : null}
                 {item.expiration_date ? <Text style={styles.meta}>Expires {item.expiration_date}</Text> : null}
               </View>
               <View style={styles.actionsRow}>

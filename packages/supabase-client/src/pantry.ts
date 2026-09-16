@@ -11,6 +11,7 @@ export interface NewPantryItemInput {
   isProduce: boolean;
   expirationDate?: string | null;
   notifyDaysBeforeExpiry?: number | null;
+  purchasePrice?: number | null;
 }
 
 export async function addPantryItem(
@@ -32,6 +33,7 @@ export async function addPantryItem(
       purchase_date: new Date().toISOString().slice(0, 10),
       expiration_date: input.expirationDate ?? null,
       notify_days_before_expiry: input.notifyDaysBeforeExpiry ?? null,
+      purchase_price: input.purchasePrice ?? null,
     })
     .select()
     .single();
@@ -48,6 +50,7 @@ export interface UpdatePantryItemInput {
   isProduce?: boolean;
   expirationDate?: string | null;
   notifyDaysBeforeExpiry?: number | null;
+  purchasePrice?: number | null;
 }
 
 export async function updatePantryItem(
@@ -65,6 +68,7 @@ export async function updatePantryItem(
   if (input.notifyDaysBeforeExpiry !== undefined) {
     changes.notify_days_before_expiry = input.notifyDaysBeforeExpiry;
   }
+  if (input.purchasePrice !== undefined) changes.purchase_price = input.purchasePrice;
 
   const { data, error } = await client
     .from('pantry_items')

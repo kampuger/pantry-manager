@@ -73,7 +73,7 @@ describe('addPantryItem', () => {
     expect(client.lastPayload.purchase_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
-  it('defaults expiration_date and notify override to null when not provided', async () => {
+  it('defaults expiration_date, notify override, and price to null when not provided', async () => {
     const client = fakePantryClient({ insert: async () => ({ data: { id: 'item-2' }, error: null }) });
 
     await addPantryItem(client, 'house-1', 'user-1', {
@@ -86,6 +86,22 @@ describe('addPantryItem', () => {
 
     expect(client.lastPayload.expiration_date).toBeNull();
     expect(client.lastPayload.notify_days_before_expiry).toBeNull();
+    expect(client.lastPayload.purchase_price).toBeNull();
+  });
+
+  it('passes the purchase price through when provided', async () => {
+    const client = fakePantryClient({ insert: async () => ({ data: { id: 'item-3' }, error: null }) });
+
+    await addPantryItem(client, 'house-1', 'user-1', {
+      name: 'Rice',
+      quantity: 2,
+      unit: 'kg',
+      storageLocation: 'PANTRY',
+      isProduce: false,
+      purchasePrice: 129.5,
+    });
+
+    expect(client.lastPayload.purchase_price).toBe(129.5);
   });
 
   it('throws when the insert errors', async () => {
@@ -112,6 +128,14 @@ describe('updatePantryItem', () => {
 
     expect(result).toEqual(row);
     expect(client.lastPayload).toEqual({ name: 'Whole Milk', is_produce: false });
+  });
+
+  it('includes purchase_price only when provided', async () => {
+    const client = fakePantryClient({ update: async () => ({ data: { id: 'item-1' }, error: null }) });
+
+    await updatePantryItem(client, 'item-1', { purchasePrice: 89.99 });
+
+    expect(client.lastPayload).toEqual({ purchase_price: 89.99 });
   });
 
   it('throws when the update errors', async () => {

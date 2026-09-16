@@ -13,6 +13,7 @@ export interface ItemFormValues {
   isProduce: boolean;
   expirationDate: string | null;
   notifyDaysOverride: number | null;
+  purchasePrice: number | null;
 }
 
 export interface ItemFormInitialValues {
@@ -23,6 +24,7 @@ export interface ItemFormInitialValues {
   isProduce: boolean;
   expirationDate: string | null;
   notifyDaysOverride: number | null;
+  purchasePrice: number | null;
   /** The item's existing purchase date; null on add (defaults to today). */
   purchaseDate: string | null;
 }
@@ -35,6 +37,7 @@ const EMPTY_VALUES: ItemFormInitialValues = {
   isProduce: true,
   expirationDate: null,
   notifyDaysOverride: null,
+  purchasePrice: null,
   purchaseDate: null,
 };
 
@@ -53,6 +56,9 @@ export function ItemForm({
 }) {
   const [name, setName] = useState(initialValues.name);
   const [quantity, setQuantity] = useState(String(initialValues.quantity));
+  const [purchasePrice, setPurchasePrice] = useState(
+    initialValues.purchasePrice != null ? String(initialValues.purchasePrice) : ''
+  );
   const [unit, setUnit] = useState(initialValues.unit);
   const [storageLocation, setStorageLocation] = useState(initialValues.storageLocation);
   const [isProduce, setIsProduce] = useState(initialValues.isProduce);
@@ -69,6 +75,7 @@ export function ItemForm({
   function resetFields() {
     setName(initialValues.name);
     setQuantity(String(initialValues.quantity));
+    setPurchasePrice(initialValues.purchasePrice != null ? String(initialValues.purchasePrice) : '');
     setUnit(initialValues.unit);
     setStorageLocation(initialValues.storageLocation);
     setIsProduce(initialValues.isProduce);
@@ -111,6 +118,7 @@ export function ItemForm({
         isProduce,
         expirationDate,
         notifyDaysOverride: notifyDaysOverride ? Number(notifyDaysOverride) : null,
+        purchasePrice: purchasePrice ? Number(purchasePrice) : null,
       });
       // Add mode only: clear the fields so a second accidental submit can't
       // create a duplicate row. The edit form is about to close (Fix 1), so
@@ -155,6 +163,18 @@ export function ItemForm({
             required
             value={quantity}
             onChange={(e) => setQuantity(e.target.value)}
+            style={inputStyle}
+          />
+        </label>
+        <label style={{ ...labelStyle, flex: '1 1 110px', maxWidth: 160 }}>
+          Price (₱, optional)
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            placeholder="0.00"
+            value={purchasePrice}
+            onChange={(e) => setPurchasePrice(e.target.value)}
             style={inputStyle}
           />
         </label>
