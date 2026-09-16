@@ -4,6 +4,8 @@ export interface GroupableItem {
   id: string;
   storageLocation: string;
   daysUntilExpiry: number | null;
+  /** This item's resolved notify threshold — see `resolveNotifyThreshold` in `@pantry/core`. */
+  warningThresholdDays: number;
 }
 
 export interface LocationGroup {
@@ -32,8 +34,8 @@ export function groupItemsByLocation(
       // are already past their date can no longer be saved, and each one
       // already carries its own "Expired" badge on the card.
       const expiringSoonCount = groupItems.filter((item) => {
-        const status = getExpiryBadgeStatus(item.daysUntilExpiry);
-        return status === 'critical' || status === 'warning';
+        const status = getExpiryBadgeStatus(item.daysUntilExpiry, item.warningThresholdDays);
+        return status === 'warning';
       }).length;
       return { location, itemIds: groupItems.map((item) => item.id), expiringSoonCount };
     });

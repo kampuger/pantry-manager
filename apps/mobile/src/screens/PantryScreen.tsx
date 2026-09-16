@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View, ActivityIndicator, Pressable } from 'react-native';
-import { getFreshnessFlag } from '@pantry/core';
+import { getFreshnessFlag, resolveNotifyThreshold, type HouseholdNotifyDefaults } from '@pantry/core';
 import { daysUntil, groupItemsByLocation } from '@pantry/ui';
 import {
   addPantryItem,
   updatePantryItem,
   archivePantryItem,
+  getHouseholdNotificationPrefs,
   STORAGE_LOCATION_OPTIONS,
   type Database,
 } from '@pantry/supabase-client';
@@ -63,6 +64,13 @@ export function PantryScreen() {
   const [editingItem, setEditingItem] = useState<PantryItemRow | null>(null);
   const [showPrefs, setShowPrefs] = useState(false);
   const [screenError, setScreenError] = useState<string | null>(null);
+  // Seeded with the households table's own defaults so the first paint
+  // (before the fetch below resolves) already matches what a fresh
+  // household would have — avoids a flash of an arbitrary threshold.
+  const [notifyPrefs, setNotifyPrefs] = useState<HouseholdNotifyDefaults>({
+    notifyDaysProduce: 2,
+    notifyDaysNonproduce: 7,
+  });
 
   const refreshItems = useCallback(
     (householdId: string) =>
@@ -88,6 +96,13 @@ export function PantryScreen() {
     if (!membership || membership === 'loading') return;
     refreshItems(membership.householdId);
   }, [membership, refreshItems]);
+
+  useEffect(() => {
+    if (!membership || membership === 'loading') return;
+    getHouseholdNotificationPrefs(supabase, membership.householdId).then((prefs) => {
+      setNotifyPrefs({ notifyDaysProduce: prefs.notifyDaysProduce, notifyDaysNonproduce: prefs.notifyDaysNonproduce });
+    });
+  }, [membership]);
 
   // PantryScreen only renders once App.tsx has already confirmed a session
   // exists (see App.tsx's Root component), so `session` is always non-null
@@ -156,6 +171,10 @@ export function PantryScreen() {
       id: item.id,
       storageLocation: item.storage_location,
       daysUntilExpiry: daysUntil(item.expiration_date),
+      warningThresholdDays: resolveNotifyThreshold(
+        { isProduce: item.is_produce, notifyDaysBeforeExpiry: item.notify_days_before_expiry },
+        notifyPrefs
+      ),
     })),
     STORAGE_LOCATION_OPTIONS
   );
@@ -212,6 +231,7 @@ export function PantryScreen() {
               label={LOCATION_META[group.location].label}
               expiringSoonCount={group.expiringSoonCount}
               items={items.filter((item) => group.itemIds.includes(item.id))}
+              notifyPrefs={notifyPrefs}
               onEdit={setEditingItem}
               onConsumed={(item) => handleArchive(item, 'CONSUMED')}
               onExpired={(item) => handleArchive(item, 'SPOILED_DISCARDED')}

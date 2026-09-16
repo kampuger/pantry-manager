@@ -1,4 +1,4 @@
-import { computeExpiryDate } from './expiry';
+import { computeExpiryDate, resolveNotifyThreshold } from './expiry';
 
 describe('computeExpiryDate', () => {
   it('computes produce expiry as 7 days after the purchase date', () => {
@@ -22,5 +22,22 @@ describe('computeExpiryDate', () => {
     expect(() => computeExpiryDate({ isProduce: false })).toThrow(
       'manualDate is required for non-produce items'
     );
+  });
+});
+
+describe('resolveNotifyThreshold', () => {
+  const household = { notifyDaysProduce: 2, notifyDaysNonproduce: 7 };
+
+  it('uses the household produce default when the item has no override', () => {
+    expect(resolveNotifyThreshold({ isProduce: true, notifyDaysBeforeExpiry: null }, household)).toBe(2);
+  });
+
+  it('uses the household non-produce default when the item has no override', () => {
+    expect(resolveNotifyThreshold({ isProduce: false, notifyDaysBeforeExpiry: null }, household)).toBe(7);
+  });
+
+  it('uses the per-item override when set, regardless of produce type', () => {
+    expect(resolveNotifyThreshold({ isProduce: true, notifyDaysBeforeExpiry: 5 }, household)).toBe(5);
+    expect(resolveNotifyThreshold({ isProduce: false, notifyDaysBeforeExpiry: 0 }, household)).toBe(0);
   });
 });

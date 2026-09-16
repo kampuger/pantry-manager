@@ -1,5 +1,6 @@
 import { View, Text, StyleSheet } from 'react-native';
 import { daysUntil, getExpiryBadgeStatus, type ExpiryBadgeStatus } from '@pantry/ui';
+import { resolveNotifyThreshold, type HouseholdNotifyDefaults } from '@pantry/core';
 import type { Database } from '@pantry/supabase-client';
 import { Badge } from '../Badge';
 import { AppButton } from '../AppButton';
@@ -9,21 +10,17 @@ type PantryItemRow = Database['public']['Tables']['pantry_items']['Row'];
 
 const EXPIRY_TONE: Record<ExpiryBadgeStatus, 'destructive' | 'warning' | 'success' | 'muted'> = {
   expired: 'destructive',
-  critical: 'destructive',
   warning: 'warning',
-  ok: 'success',
+  good: 'success',
   unknown: 'muted',
 };
 
-// Left accent rail per card — instant scannability without adding colors:
-// every value below is an existing token from lib/theme. 'expired' shares the
-// destructive badge with 'critical' but gets the dark foreground rail, so the
-// two read as different states at a glance.
+// Left accent rail per card — instant scannability without adding colors;
+// every value below is an existing token from lib/theme.
 const EXPIRY_ACCENT: Record<ExpiryBadgeStatus, string> = {
-  expired: color.foreground,
-  critical: color.destructive,
+  expired: color.destructive,
   warning: color.warning,
-  ok: color.secondary,
+  good: color.success,
   unknown: color.border,
 };
 
@@ -32,6 +29,7 @@ export function PantryLocationGroup({
   label,
   expiringSoonCount,
   items,
+  notifyPrefs,
   onEdit,
   onConsumed,
   onExpired,
@@ -40,6 +38,7 @@ export function PantryLocationGroup({
   label: string;
   expiringSoonCount: number;
   items: PantryItemRow[];
+  notifyPrefs: HouseholdNotifyDefaults;
   onEdit: (item: PantryItemRow) => void;
   onConsumed: (item: PantryItemRow) => void;
   onExpired: (item: PantryItemRow) => void;
@@ -66,7 +65,11 @@ export function PantryLocationGroup({
         ) : null}
       </View>
       {items.map((item) => {
-        const status = getExpiryBadgeStatus(daysUntil(item.expiration_date));
+        const threshold = resolveNotifyThreshold(
+          { isProduce: item.is_produce, notifyDaysBeforeExpiry: item.notify_days_before_expiry },
+          notifyPrefs
+        );
+        const status = getExpiryBadgeStatus(daysUntil(item.expiration_date), threshold);
         return (
           <View key={item.id} style={[styles.itemCard, { borderLeftColor: EXPIRY_ACCENT[status] }]}>
             <View style={styles.itemHeaderRow}>
