@@ -56,7 +56,7 @@ export function BulkAddModal({
   onSubmit: (items: BulkItemInput[]) => Promise<void>;
   onCancel: () => void;
 }) {
-  const [rows, setRows] = useState<BulkRow[]>(() => [emptyRow(), emptyRow(), emptyRow()]);
+  const [rows, setRows] = useState<BulkRow[]>(() => [emptyRow()]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -113,9 +113,9 @@ export function BulkAddModal({
   return (
     <div style={{ ...cardStyle, width: '100%', maxWidth: 920, padding: 24, display: 'grid', gap: 16 }}>
       <div>
-        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: color.foreground }}>Add multiple items</h2>
+        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: color.foreground }}>Add items</h2>
         <p style={{ margin: '4px 0 0', fontSize: 13, color: color.mutedForeground }}>
-          Fill in as many rows as you need, then save them all at once. Blank rows are ignored.
+          Fill in a row per item — add more rows as you need them, then save them all at once.
         </p>
       </div>
 

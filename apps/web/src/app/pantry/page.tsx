@@ -5,7 +5,6 @@ import { useSearchParams } from 'next/navigation';
 import { getFreshnessFlag, resolveNotifyThreshold, formatPHP, type HouseholdNotifyDefaults } from '@pantry/core';
 import { daysUntil, getExpiryBadgeStatus, groupItemsByLocation } from '@pantry/ui';
 import {
-  addPantryItem,
   addPantryItems,
   updatePantryItem,
   archivePantryItem,
@@ -91,7 +90,6 @@ function PantryPageContent() {
   const searchParams = useSearchParams();
   const [items, setItems] = useState<PantryItemRow[]>([]);
   const [editingItem, setEditingItem] = useState<PantryItemRow | null>(null);
-  const [showAddForm, setShowAddForm] = useState(false);
   const [showBulkAdd, setShowBulkAdd] = useState(false);
   const [showPrefs, setShowPrefs] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -161,22 +159,6 @@ function PantryPageContent() {
         <DemoPantryList />
       </div>
     );
-  }
-
-  async function handleAdd(values: ItemFormValues) {
-    if (!membership || membership === 'loading') return;
-    await addPantryItem(supabase, membership.householdId, session!.user.id, {
-      name: values.name,
-      quantity: values.quantity,
-      unit: values.unit,
-      storageLocation: values.storageLocation,
-      isProduce: values.isProduce,
-      expirationDate: values.expirationDate,
-      notifyDaysBeforeExpiry: values.notifyDaysOverride,
-      purchasePrice: values.purchasePrice,
-    });
-    setShowAddForm(false);
-    await refreshItems(membership.householdId);
   }
 
   async function handleBulkAdd(bulkItems: BulkItemInput[]) {
@@ -295,12 +277,6 @@ function PantryPageContent() {
             </button>
             <button
               onClick={() => setShowBulkAdd(true)}
-              style={{ ...buttonStyle('secondary'), padding: '8px 16px', borderRadius: radius.pill, whiteSpace: 'nowrap' }}
-            >
-              + Add multiple
-            </button>
-            <button
-              onClick={() => setShowAddForm(true)}
               style={{ ...buttonStyle('primary'), padding: '8px 16px', borderRadius: radius.pill, whiteSpace: 'nowrap' }}
             >
               + Add item
@@ -402,18 +378,6 @@ function PantryPageContent() {
               onExpired={(item) => handleArchive(item, 'SPOILED_DISCARDED')}
             />
           ))}
-          {showAddForm && (
-            <div style={MODAL_OVERLAY_STYLE}>
-              <div style={{ maxWidth: 640, width: '100%' }}>
-                <ItemForm
-                  mode="add"
-                  submitLabel="Add item"
-                  onCancel={() => setShowAddForm(false)}
-                  onSubmit={handleAdd}
-                />
-              </div>
-            </div>
-          )}
           {showBulkAdd && (
             <div style={MODAL_OVERLAY_STYLE}>
               <BulkAddModal onCancel={() => setShowBulkAdd(false)} onSubmit={handleBulkAdd} />
