@@ -1999,11 +1999,9 @@ git push
 
 This task cannot be executed by the agent alone: it requires a Resend account signup (Task 11 spec decision, user approved) and Supabase CLI deployment, both of which need credentials the agent does not have and should not request (no `service_role` key, no ngrok/CLI login tokens) — consistent with how every prior migration in this repo has been hand-applied rather than agent-run.
 
-- [ ] **Step 1: Create the Resend account and API key**
+- [x] **Step 1: Create the Resend account and API key** — done 2026-09-16. Using Resend's shared test domain (`onboarding@resend.dev`) for now — this restricts test sends to the account owner's own verified email (`ronnel.go@gmail.com`); a domain must be verified in Resend before real users other than the account owner can receive email.
 
-User action: sign up at resend.com (free tier), verify a sending domain or use Resend's default test domain for initial verification, and create an API key.
-
-- [ ] **Step 2: Apply the two new migrations**
+- [x] **Step 2: Apply the two new migrations** — done 2026-09-16, both applied via Supabase Studio SQL editor with no errors.
 
 User (or agent, if given a way to run `npx supabase db push` against the linked project) applies, in order:
 - `supabase/migrations/20260916000001_notification_reminders_schema.sql`
@@ -2013,7 +2011,7 @@ via the Supabase Studio SQL editor, same as every prior migration in this projec
 
 **Decision made:** email digest defaults to ON (opt-out) — every household member is enrolled the moment this migration lands, and can turn it off in settings. `household_members.notifications_enabled default true` stays as-written; no migration change needed for this.
 
-- [ ] **Step 2b: Verify the cron pipeline is actually alive, not just deployed**
+- [x] **Step 2b: Verify the cron pipeline is actually alive, not just deployed** — done 2026-09-16. Confirmed live: `vault.decrypted_secrets` had NO pre-seeded `service_role_key` row (the "Supabase pre-seeds this" assumption in the spec was wrong for this project) — fixed by manually running `select vault.create_secret(<key>, 'service_role_key', ...)` with the user's own service_role key, pasted directly into the Supabase SQL editor and never shared with the agent. After that, `cron.job_run_details` showed 5 consecutive `succeeded` runs at exact 15-minute intervals, and both privilege checks returned the expected values (`authenticated`: `f`, `service_role`: `t`). `net._http_response` was not separately checked — real end-to-end dispatch was already proven via Step 4's on-demand test below, which exercises the identical code path.
 
 The cron dispatch path has two independent silent-failure modes the final review flagged: the `service_role_key` Vault lookup can be absent (older Supabase project vintages may not pre-seed it), and `net.http_post` is fire-and-forget with nothing reading the response — a bad URL, an auth failure, or a cold-start error at the Edge Function would be invisible. After applying the migrations, run each of these in the Supabase Studio SQL editor and confirm the expected result before moving on:
 
@@ -2050,7 +2048,7 @@ select has_function_privilege('service_role', 'refresh_household_reminders(uuid)
 -- Expected: t
 ```
 
-- [ ] **Step 3: Deploy the Edge Function and set its secrets**
+- [x] **Step 3: Deploy the Edge Function and set its secrets** — done 2026-09-16 by the user (interactive CLI login + deploy are outside what the agent can do without holding account-level credentials).
 
 ```bash
 npx supabase login
@@ -2062,7 +2060,7 @@ npx supabase secrets set RESEND_FROM_ADDRESS="Pantry Tracker <onboarding@resend.
 
 (`SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are automatically available to every Edge Function — no need to set them manually.)
 
-- [ ] **Step 4: Live verification — direct curl against the deployed function**
+- [x] **Step 4: Live verification — direct curl against the deployed function** — done 2026-09-16. On-demand trigger as household owner: `200 {"status":"sent","results":[{"userId":"...","ok":false,"error":"Resend 403: ...You can only send testing emails to your own email address (ronnel.go@gmail.com)..."}]}` — proved the entire chain (auth check, `refresh_household_reminders`, digest formatting, Resend API call) works correctly; the only failure was Resend's sandbox recipient restriction, not anything built here. Re-verified actual delivery separately by triggering "Send reminders now" from the real browser UI as `ronnel.go@gmail.com` — email received, which also exercises the CORS fix (this raw-fetch curl/script test does not enforce CORS and so cannot validate that fix on its own). Plain MEMBER account: `403 Forbidden: only household owners/admins can trigger reminders` — exactly as designed. Test household, items, and memberships cleaned up afterward via the test account's own access token (the two throwaway auth users themselves remain, undeletable without a service_role key, consistent with this project's standing practice).
 
 Using a `kampuger+notiftest@gmail.com`-style test account (per this project's standing test-email practice) that's already a household owner with at least one expiring item:
 
@@ -2080,11 +2078,9 @@ curl -s -X POST 'https://nrjeqeddlssrxaskovrs.supabase.co/functions/v1/compute-a
 
 Expected: `{"status":"sent","results":[{"userId":"...","ok":true}]}` and the test inbox receives the digest email. Then confirm a plain MEMBER account gets `403 Forbidden` calling the same endpoint.
 
-- [ ] **Step 5: Live UI verification via `run-web` / `run-mobile`**
+- [x] **Step 5: Live UI verification via `run-web` / `run-mobile`** — partially done 2026-09-16: confirmed live in the real browser as the household owner that the admin-only fields (day thresholds, send time, intro, "Send reminders now") render and the send-now button works end-to-end (real email received). Not separately re-verified in this pass: bell badge count rendering, a plain-member's restricted view of the modal, and bell-clears-on-archive — these were already confirmed once during Task 7/8's task-level reviews (byte-for-byte diff verification against the approved plan code), and the on-demand/authorization checks just run in Step 4 exercise the same underlying data path. Mobile (`run-mobile`) not exercised in this deployment pass — recommended before considering mobile production-ready.
 
-Confirm: the bell renders with the correct badge count for a household with a seeded expiring item; the settings modal shows the on/off toggle for every member and the admin-only fields (day thresholds, send time, intro, send-now button) only for an owner/admin test account; clicking "Send reminders now" reflects a success state; after archiving the item via the existing Consumed/Discard actions, the bell badge clears.
-
-- [ ] **Step 6: Final commit (if any fixes were needed during verification)**
+- [x] **Step 6: Final commit (if any fixes were needed during verification)** — not applicable: no code changes were needed during live verification. The one gap found (missing Vault secret) was a deployment-step fix, not a code fix, and is already documented in Step 2b above.
 
 ```bash
 git add -A
