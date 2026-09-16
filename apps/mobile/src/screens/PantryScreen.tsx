@@ -3,7 +3,7 @@ import { ScrollView, StyleSheet, Text, View, ActivityIndicator, Pressable, TextI
 import { getFreshnessFlag, resolveNotifyThreshold, formatPHP, type HouseholdNotifyDefaults } from '@pantry/core';
 import { daysUntil, getExpiryBadgeStatus, groupItemsByLocation } from '@pantry/ui';
 import {
-  addPantryItem,
+  addPantryItems,
   updatePantryItem,
   archivePantryItem,
   getHouseholdNotificationPrefs,
@@ -18,6 +18,7 @@ import { CreateHouseholdPrompt } from '../components/CreateHouseholdPrompt';
 import { Badge } from '../components/Badge';
 import { AppButton } from '../components/AppButton';
 import { ItemForm, type ItemFormValues } from '../components/pantry/ItemForm';
+import { BulkAddModal, type BulkItemInput } from '../components/pantry/BulkAddModal';
 import { PantryLocationGroup } from '../components/pantry/PantryLocationGroup';
 import { NotificationPrefsModal } from '../components/pantry/NotificationPrefsModal';
 import { color, radius, cardStyle, inputStyle, font } from '../lib/theme';
@@ -64,7 +65,7 @@ export function PantryScreen() {
   const { membership, create } = useHousehold();
   const [items, setItems] = useState<PantryItemRow[]>([]);
   const [editingItem, setEditingItem] = useState<PantryItemRow | null>(null);
-  const [showAddForm, setShowAddForm] = useState(false);
+  const [showBulkAdd, setShowBulkAdd] = useState(false);
   const [showPrefs, setShowPrefs] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showExpiringOnly, setShowExpiringOnly] = useState(false);
@@ -121,19 +122,10 @@ export function PantryScreen() {
     );
   }
 
-  async function handleAdd(values: ItemFormValues) {
+  async function handleBulkAdd(bulkItems: BulkItemInput[]) {
     if (!membership || membership === 'loading') return;
-    await addPantryItem(supabase, membership.householdId, session!.user.id, {
-      name: values.name,
-      quantity: values.quantity,
-      unit: values.unit,
-      storageLocation: values.storageLocation,
-      isProduce: values.isProduce,
-      expirationDate: values.expirationDate,
-      notifyDaysBeforeExpiry: values.notifyDaysOverride,
-      purchasePrice: values.purchasePrice,
-    });
-    setShowAddForm(false);
+    await addPantryItems(supabase, membership.householdId, session!.user.id, bulkItems);
+    setShowBulkAdd(false);
     await refreshItems(membership.householdId);
   }
 
@@ -229,7 +221,7 @@ export function PantryScreen() {
             >
               <Text style={styles.gearIcon}>⚙️</Text>
             </Pressable>
-            <AppButton title="+ Add" onPress={() => setShowAddForm(true)} style={styles.addButton} />
+            <AppButton title="+ Add" onPress={() => setShowBulkAdd(true)} style={styles.addButton} />
           </View>
         )}
       </View>
@@ -277,11 +269,9 @@ export function PantryScreen() {
               onExpired={(item) => handleArchive(item, 'SPOILED_DISCARDED')}
             />
           ))}
-          <Modal visible={showAddForm} transparent animationType="fade" onRequestClose={() => setShowAddForm(false)}>
+          <Modal visible={showBulkAdd} transparent animationType="fade" onRequestClose={() => setShowBulkAdd(false)}>
             <View style={styles.modalOverlay}>
-              <ScrollView contentContainerStyle={styles.modalScrollContent}>
-                <ItemForm mode="add" submitLabel="Add item" onCancel={() => setShowAddForm(false)} onSubmit={handleAdd} />
-              </ScrollView>
+              <BulkAddModal onCancel={() => setShowBulkAdd(false)} onSubmit={handleBulkAdd} />
             </View>
           </Modal>
           <Modal visible={!!editingItem} transparent animationType="fade" onRequestClose={() => setEditingItem(null)}>
