@@ -42,6 +42,11 @@ create policy "admins can demote other admins"
 
 -- Prevents the panel from ever locking everyone out by demoting the last
 -- admin (including demoting themselves, if they're the only one left).
+-- Counts only admins who could actually sign in and use their access right
+-- now (not banned) — a row for a suspended admin doesn't count as "a
+-- remaining admin" for the purposes of this guard, otherwise suspending an
+-- admin and then self-demoting can leave the table with rows but zero
+-- usable admins.
 create or replace function prevent_removing_last_admin()
 returns trigger
 language plpgsql
@@ -49,8 +54,13 @@ security definer
 set search_path = pg_catalog, public
 as $$
 begin
-  if (select count(*) from platform_admins) <= 1 then
-    raise exception 'cannot remove the last remaining platform admin';
+  if not exists (
+    select 1 from platform_admins pa
+    join auth.users u on u.id = pa.user_id
+    where pa.user_id <> old.user_id
+      and (u.banned_until is null or u.banned_until < now())
+  ) then
+    raise exception 'cannot remove the last remaining active platform admin';
   end if;
   return old;
 end;

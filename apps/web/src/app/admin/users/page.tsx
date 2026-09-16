@@ -39,10 +39,12 @@ export default function AdminUsersPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [busyUserId, setBusyUserId] = useState<string | null>(null);
 
-  function refreshUsers() {
-    listAllUsers(supabase)
-      .then(setUsers)
-      .catch((err: unknown) => setLoadError(err instanceof Error ? err.message : 'Failed to load users'));
+  async function refreshUsers() {
+    try {
+      setUsers(await listAllUsers(supabase));
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : 'Failed to load users');
+    }
   }
 
   useEffect(() => {
@@ -67,7 +69,7 @@ export default function AdminUsersPage() {
       await inviteUser(supabase, email.trim());
       setInviteStatus(`Invite sent to ${email.trim()}`);
       setEmail('');
-      refreshUsers();
+      await refreshUsers();
     } catch (err) {
       setInviteIsError(true);
       setInviteStatus(err instanceof Error ? err.message : 'Failed to send invite');
@@ -82,7 +84,7 @@ export default function AdminUsersPage() {
     try {
       if (isSuspended(user)) await unsuspendUser(supabase, user.id);
       else await suspendUser(supabase, user.id);
-      refreshUsers();
+      await refreshUsers();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Action failed');
     } finally {
@@ -97,7 +99,7 @@ export default function AdminUsersPage() {
     try {
       if (user.isAdmin) await revokeAdmin(supabase, user.id);
       else await grantAdmin(supabase, user.id, session.user.id);
-      refreshUsers();
+      await refreshUsers();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Action failed');
     } finally {

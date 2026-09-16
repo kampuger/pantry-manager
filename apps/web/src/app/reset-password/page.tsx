@@ -45,11 +45,11 @@ export default function ResetPasswordPage() {
     return (
       <div style={{ maxWidth: 380, margin: '40px auto 0' }}>
         <div style={{ ...cardStyle, padding: 32 }}>
-          <h1 style={{ margin: 0, fontSize: 24 }}>Reset link needed</h1>
+          <h1 style={{ margin: 0, fontSize: 24 }}>Link needed</h1>
           <p style={{ color: color.mutedForeground, marginTop: 6, fontSize: 14 }}>
-            This page only works when opened from a password-reset email.{' '}
+            This page only works when opened from a password-reset or account-invite email.{' '}
             <a href="/login" style={{ color: color.primary, fontWeight: 600 }}>
-              Request a new one
+              Go to sign in
             </a>
             .
           </p>

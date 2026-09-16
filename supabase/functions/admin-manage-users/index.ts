@@ -14,6 +14,12 @@ const corsHeaders = {
 // Unsuspending sets the duration back to 'none'.
 const PERMANENT_BAN_DURATION = '876000h';
 
+// Same single-hardcoded-target convention as apps/web/src/lib/AuthProvider.tsx's
+// RESET_PASSWORD_REDIRECT_URL — an invited user needs to land somewhere that
+// can set their password; this app already has that page. Update both
+// constants together if the app ever moves off localhost.
+const INVITE_REDIRECT_URL = 'http://localhost:3000/reset-password';
+
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -106,7 +112,7 @@ Deno.serve(async (req) => {
     if (!email || !email.includes('@')) {
       return jsonResponse({ status: 'error', message: 'A valid email is required' }, 400);
     }
-    const { error } = await admin.auth.admin.inviteUserByEmail(email);
+    const { error } = await admin.auth.admin.inviteUserByEmail(email, { redirectTo: INVITE_REDIRECT_URL });
     if (error) return jsonResponse({ status: 'error', message: error.message }, 400);
     return jsonResponse({ status: 'ok' });
   }

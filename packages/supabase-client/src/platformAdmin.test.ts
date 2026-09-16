@@ -45,6 +45,29 @@ describe('listAllUsers', () => {
     const client = { functions: { invoke } } as unknown as SupabaseClient<Database>;
     await expect(listAllUsers(client)).rejects.toThrow('403 Forbidden');
   });
+
+  it('surfaces the server-provided message from a FunctionsHttpError context, not the generic supabase-js message', async () => {
+    const fakeResponse = {
+      clone() {
+        return this;
+      },
+      json: async () => ({ status: 'error', message: 'already registered' }),
+    };
+    const httpError = Object.assign(new Error('Edge Function returned a non-2xx status code'), {
+      context: fakeResponse,
+    });
+    const invoke = jest.fn(async () => ({ data: null, error: httpError }));
+    const client = { functions: { invoke } } as unknown as SupabaseClient<Database>;
+
+    await expect(inviteUser(client, 'dup@example.com')).rejects.toThrow('already registered');
+  });
+
+  it('throws a clean error when the function returns no data and no error', async () => {
+    const invoke = jest.fn(async () => ({ data: null, error: null }));
+    const client = { functions: { invoke } } as unknown as SupabaseClient<Database>;
+
+    await expect(listAllUsers(client)).rejects.toThrow('Unexpected response from admin-manage-users');
+  });
 });
 
 describe('inviteUser', () => {

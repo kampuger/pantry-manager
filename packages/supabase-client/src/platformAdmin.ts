@@ -10,6 +10,41 @@ export interface AdminUserRow {
   isAdmin: boolean;
 }
 
+/**
+ * Invokes admin-manage-users and unwraps its response. supabase-js's
+ * FunctionsHttpError only carries a fixed generic message on `.message` —
+ * the actual server-provided message (from admin-manage-users' own JSON
+ * body, e.g. "already registered" or "Forbidden: ...") is only reachable
+ * via `error.context`, the raw Response the function returned. Without
+ * this, every server-side error message this Edge Function was written to
+ * produce gets silently replaced with "Edge Function returned a non-2xx
+ * status code" on the way to the UI.
+ */
+async function invokeAdminFn(
+  client: SupabaseClient<Database>,
+  body: Record<string, unknown>
+): Promise<any> {
+  const { data, error } = await client.functions.invoke('admin-manage-users', { body });
+  if (error) {
+    const context = (error as { context?: Response }).context;
+    let serverMessage: string | undefined;
+    if (context) {
+      try {
+        const parsed = (await context.clone().json()) as { message?: string };
+        serverMessage = parsed?.message;
+      } catch {
+        // Response body wasn't JSON, or already consumed — fall through to the generic error below.
+      }
+    }
+    if (serverMessage) throw new Error(serverMessage);
+    throw error;
+  }
+  if (!data || data.status !== 'ok') {
+    throw new Error(data?.message ?? 'Unexpected response from admin-manage-users');
+  }
+  return data;
+}
+
 /** Whether the signed-in caller is a platform admin. Drives both the /admin/users access check and the conditional "Admin" nav link. */
 export async function checkIsPlatformAdmin(client: SupabaseClient<Database>): Promise<boolean> {
   const { data, error } = await client.rpc('is_platform_admin', {});
@@ -25,32 +60,20 @@ export async function checkIsPlatformAdmin(client: SupabaseClient<Database>): Pr
  * client-side alone.
  */
 export async function listAllUsers(client: SupabaseClient<Database>): Promise<AdminUserRow[]> {
-  const { data, error } = await client.functions.invoke('admin-manage-users', {
-    body: { action: 'list_users' },
-  });
-  if (error) throw error;
-  return data.users;
+  const data = await invokeAdminFn(client, { action: 'list_users' });
+  return data.users ?? [];
 }
 
 export async function inviteUser(client: SupabaseClient<Database>, email: string): Promise<void> {
-  const { error } = await client.functions.invoke('admin-manage-users', {
-    body: { action: 'invite_user', email },
-  });
-  if (error) throw error;
+  await invokeAdminFn(client, { action: 'invite_user', email });
 }
 
 export async function suspendUser(client: SupabaseClient<Database>, targetUserId: string): Promise<void> {
-  const { error } = await client.functions.invoke('admin-manage-users', {
-    body: { action: 'suspend_user', targetUserId },
-  });
-  if (error) throw error;
+  await invokeAdminFn(client, { action: 'suspend_user', targetUserId });
 }
 
 export async function unsuspendUser(client: SupabaseClient<Database>, targetUserId: string): Promise<void> {
-  const { error } = await client.functions.invoke('admin-manage-users', {
-    body: { action: 'unsuspend_user', targetUserId },
-  });
-  if (error) throw error;
+  await invokeAdminFn(client, { action: 'unsuspend_user', targetUserId });
 }
 
 /**
