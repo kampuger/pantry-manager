@@ -3,7 +3,7 @@
 import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { Sidebar } from './Sidebar';
-import { MobileNav, MOBILE_TOP_BAR_HEIGHT, MOBILE_BOTTOM_BAR_HEIGHT } from './MobileNav';
+import { MobileNav, MOBILE_TOP_BAR_HEIGHT } from './MobileNav';
 import { useIsMobile } from '@/lib/useIsMobile';
 
 // Routes that own their entire viewport (no nav chrome, no content max-width)
@@ -27,7 +27,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           style={{
             boxSizing: 'border-box',
             minHeight: '100vh',
-            padding: `${MOBILE_TOP_BAR_HEIGHT + 16}px 16px ${MOBILE_BOTTOM_BAR_HEIGHT + 16}px`,
+            padding: `${MOBILE_TOP_BAR_HEIGHT + 16}px 16px 32px`,
           }}
         >
           {children}
