@@ -21,13 +21,6 @@ export type ShoppingItem = {
   checked: boolean;
 };
 
-export type BudgetSnapshot = {
-  monthlyBudget: number;
-  spentThisMonth: number;
-  remaining: number;
-  pantryEfficiency: number;
-};
-
 export const pantrySeed: PantryItem[] = [
   {
     id: 'p1',
@@ -111,16 +104,3 @@ export const shoppingSeed: ShoppingItem[] = [
   { id: 's5', name: 'Lettuce', quantity: '2 heads', category: 'Produce', priority: 'High', estimatedCost: 75, checked: false },
 ];
 
-export const budgetSeed: BudgetSnapshot = {
-  monthlyBudget: 6000,
-  spentThisMonth: 2140,
-  remaining: 3860,
-  pantryEfficiency: 82,
-};
-
-export const financialBreakdown = [
-  { category: 'Groceries', value: 920 },
-  { category: 'Meat & Fish', value: 630 },
-  { category: 'Dairy', value: 280 },
-  { category: 'Produce', value: 310 },
-];
