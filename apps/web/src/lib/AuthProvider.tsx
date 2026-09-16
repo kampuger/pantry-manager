@@ -7,8 +7,12 @@ import { supabase } from './supabaseClient';
 // Single hardcoded redirect target for password-reset emails on both
 // platforms — see docs/superpowers brainstorming for 2026-09-15: mobile has
 // no deep-link scheme configured, so it reuses this same web URL rather than
-// needing its own reset screen. Update this if the app moves off localhost.
-const RESET_PASSWORD_REDIRECT_URL = 'http://localhost:3000/reset-password';
+// needing its own reset screen. Points at the deployed production domain
+// (registered as a real Vercel Domain, not just a one-off alias — see the
+// project's Vercel dashboard) so reset emails work for real users, not just
+// local dev. Update this — and supabase/functions/admin-manage-users'
+// matching INVITE_REDIRECT_URL — together if the production domain changes.
+const RESET_PASSWORD_REDIRECT_URL = 'https://meraki-pantry-tracker.vercel.app/reset-password';
 
 interface AuthContextValue {
   session: Session | null;

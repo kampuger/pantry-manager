@@ -16,9 +16,10 @@ const PERMANENT_BAN_DURATION = '876000h';
 
 // Same single-hardcoded-target convention as apps/web/src/lib/AuthProvider.tsx's
 // RESET_PASSWORD_REDIRECT_URL — an invited user needs to land somewhere that
-// can set their password; this app already has that page. Update both
-// constants together if the app ever moves off localhost.
-const INVITE_REDIRECT_URL = 'http://localhost:3000/reset-password';
+// can set their password; this app already has that page. Points at the
+// deployed production domain (a real Vercel Domain, not a one-off alias).
+// Update both constants together if the production domain ever changes.
+const INVITE_REDIRECT_URL = 'https://meraki-pantry-tracker.vercel.app/reset-password';
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
