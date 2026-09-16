@@ -50,6 +50,19 @@ export const cardStyle: CSSProperties = {
 };
 
 export const inputStyle: CSSProperties = {
+  // border-box so any caller that also sets a width (100%, a fixed px value,
+  // a flex-basis) gets that width inclusive of padding+border — otherwise
+  // (this app has no global CSS reset) the browser's content-box default
+  // adds padding on top of the specified width, overflowing the container.
+  boxSizing: 'border-box',
+  // Every call site wraps this in a `display:grid`/flex label meaning to
+  // stretch it to the label's width, but a number input's browser-intrinsic
+  // min-content size (its spinner controls) can exceed a narrow grid cell —
+  // grid/flex items default to `min-width:auto`, so the browser honors that
+  // intrinsic size over the stretch and overflows the container. width:100%
+  // plus minWidth:0 makes the input actually fill (and shrink to) its cell.
+  width: '100%',
+  minWidth: 0,
   padding: '10px 12px',
   borderRadius: radius.sm,
   border: `1px solid ${color.border}`,
@@ -67,6 +80,10 @@ export function buttonStyle(variant: 'primary' | 'secondary' | 'ghost' | 'danger
   // rerender needs to add/remove `borderColor` while a `border` shorthand
   // is also present, since the two can't be reconciled property-by-property.
   const base: CSSProperties = {
+    // Same reasoning as inputStyle's boxSizing — a caller giving the button
+    // an explicit width (e.g. width:'100%' on a full-width submit button)
+    // must not have padding added on top of it.
+    boxSizing: 'border-box',
     fontFamily: 'inherit',
     fontSize: 14,
     fontWeight: 600,

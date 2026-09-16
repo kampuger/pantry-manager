@@ -13,6 +13,7 @@ import { getHouseholdNotificationPrefs, type Database } from '@pantry/supabase-c
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/lib/AuthProvider';
 import { useHousehold } from '@/lib/useHousehold';
+import { useIsMobile } from '@/lib/useIsMobile';
 import { color, cardStyle, radius } from '@/lib/theme';
 
 type PantryItemRow = Database['public']['Tables']['pantry_items']['Row'];
@@ -106,6 +107,8 @@ function ItemListModal({
   items: DisplayItem[];
   onClose: () => void;
 }) {
+  const isMobile = useIsMobile();
+
   return (
     <div
       style={{
@@ -135,6 +138,23 @@ function ItemListModal({
         </div>
         {items.length === 0 ? (
           <p style={{ color: color.mutedForeground, fontSize: 14 }}>No items in this group.</p>
+        ) : isMobile ? (
+          <div style={{ display: 'grid', gap: 10 }}>
+            {items.map((item) => (
+              <div key={item.id} style={{ borderBottom: `1px solid ${color.border}`, paddingBottom: 10 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10 }}>
+                  <span style={{ fontWeight: 600, fontSize: 14 }}>{item.name}</span>
+                  <span style={{ fontWeight: 700, fontSize: 14, whiteSpace: 'nowrap' }}>
+                    {item.cost != null ? formatPHP(item.cost) : '—'}
+                  </span>
+                </div>
+                <div style={{ color: color.mutedForeground, fontSize: 12.5, marginTop: 2 }}>
+                  {LOCATION_LABELS[item.location] ?? item.location} · {item.quantity} {item.unit}
+                  {item.expirationDate ? ` · ${formatExpiryDate(item.expirationDate)}` : ''}
+                </div>
+              </div>
+            ))}
+          </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>

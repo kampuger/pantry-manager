@@ -55,6 +55,7 @@ function IngredientMatcher({ householdId }: { householdId: string }) {
         rows={8}
         style={{
           width: '100%',
+          boxSizing: 'border-box',
           maxWidth: 480,
           marginTop: 16,
           padding: 12,
