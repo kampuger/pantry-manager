@@ -1,5 +1,7 @@
 import { buildDigestEmail } from './notificationDigest';
 
+const NO_REPLY_NOTICE = 'This is an automated message — replies to this email are not monitored.';
+
 describe('buildDigestEmail', () => {
   it('uses singular wording and sorts a single item', () => {
     const result = buildDigestEmail({
@@ -8,7 +10,7 @@ describe('buildDigestEmail', () => {
       items: [{ name: 'Milk', daysUntilExpiry: 2 }],
     });
     expect(result.subject).toBe('1 item expiring soon in The Gos');
-    expect(result.body).toBe('- Milk — expires in 2 days');
+    expect(result.body).toBe(`- Milk — expires in 2 days\n\n${NO_REPLY_NOTICE}`);
   });
 
   it('uses plural wording and sorts soonest-first', () => {
@@ -21,7 +23,7 @@ describe('buildDigestEmail', () => {
       ],
     });
     expect(result.subject).toBe('2 items expiring soon in The Gos');
-    expect(result.body).toBe('- Milk — expires in 2 days\n- Bread — expires in 5 days');
+    expect(result.body).toBe(`- Milk — expires in 2 days\n- Bread — expires in 5 days\n\n${NO_REPLY_NOTICE}`);
   });
 
   it('prepends the intro text as its own paragraph when set', () => {
@@ -30,15 +32,15 @@ describe('buildDigestEmail', () => {
       introText: 'Hey team, heads up!',
       items: [{ name: 'Milk', daysUntilExpiry: 2 }],
     });
-    expect(result.body).toBe('Hey team, heads up!\n\n- Milk — expires in 2 days');
+    expect(result.body).toBe(`Hey team, heads up!\n\n- Milk — expires in 2 days\n\n${NO_REPLY_NOTICE}`);
   });
 
   it('omits the intro paragraph when null or blank', () => {
     const nullResult = buildDigestEmail({ householdName: 'H', introText: null, items: [{ name: 'A', daysUntilExpiry: 1 }] });
-    expect(nullResult.body).toBe('- A — expires tomorrow');
+    expect(nullResult.body).toBe(`- A — expires tomorrow\n\n${NO_REPLY_NOTICE}`);
 
     const blankResult = buildDigestEmail({ householdName: 'H', introText: '   ', items: [{ name: 'A', daysUntilExpiry: 1 }] });
-    expect(blankResult.body).toBe('- A — expires tomorrow');
+    expect(blankResult.body).toBe(`- A — expires tomorrow\n\n${NO_REPLY_NOTICE}`);
   });
 
   it('describes today, tomorrow, future, and already-expired days correctly', () => {
@@ -58,7 +60,23 @@ describe('buildDigestEmail', () => {
         '- Today item — expires today',
         '- Tomorrow item — expires tomorrow',
         '- Future item — expires in 3 days',
-      ].join('\n')
+      ].join('\n') + `\n\n${NO_REPLY_NOTICE}`
     );
+  });
+
+  it('always includes the no-reply notice as the last paragraph, regardless of intro or item count', () => {
+    const withIntro = buildDigestEmail({
+      householdName: 'H',
+      introText: 'Custom intro',
+      items: [{ name: 'A', daysUntilExpiry: 1 }],
+    });
+    expect(withIntro.body.endsWith(NO_REPLY_NOTICE)).toBe(true);
+
+    const withoutIntro = buildDigestEmail({
+      householdName: 'H',
+      introText: null,
+      items: [{ name: 'A', daysUntilExpiry: 1 }],
+    });
+    expect(withoutIntro.body.endsWith(NO_REPLY_NOTICE)).toBe(true);
   });
 });

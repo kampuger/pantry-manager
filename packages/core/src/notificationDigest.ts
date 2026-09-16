@@ -14,6 +14,11 @@ export interface DigestEmail {
   body: string;
 }
 
+// The from-address has no real inbox behind it (see RESEND_FROM_ADDRESS) —
+// this line is mandatory on every digest so recipients don't reply expecting
+// a response.
+const NO_REPLY_NOTICE = 'This is an automated message — replies to this email are not monitored.';
+
 function describeDays(days: number): string {
   if (days < 0) {
     const abs = Math.abs(days);
@@ -32,7 +37,7 @@ export function buildDigestEmail(input: DigestInput): DigestEmail {
   const itemLines = sorted.map((item) => `- ${item.name} — ${describeDays(item.daysUntilExpiry)}`).join('\n');
   const intro = input.introText?.trim();
 
-  const body = intro ? `${intro}\n\n${itemLines}` : itemLines;
+  const body = [intro, itemLines, NO_REPLY_NOTICE].filter(Boolean).join('\n\n');
 
   return { subject, body };
 }
