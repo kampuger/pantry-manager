@@ -61,6 +61,11 @@ export const inputStyle: CSSProperties = {
 };
 
 export function buttonStyle(variant: 'primary' | 'secondary' | 'ghost' | 'danger' = 'primary'): CSSProperties {
+  // Longhand border properties throughout (never the `border` shorthand) —
+  // some buttons in the app switch variant on the same DOM element at
+  // runtime (e.g. a pressed/unpressed toggle), and React warns when a
+  // rerender needs to add/remove `borderColor` while a `border` shorthand
+  // is also present, since the two can't be reconciled property-by-property.
   const base: CSSProperties = {
     fontFamily: 'inherit',
     fontSize: 14,
@@ -68,13 +73,17 @@ export function buttonStyle(variant: 'primary' | 'secondary' | 'ghost' | 'danger
     padding: '10px 18px',
     borderRadius: radius.sm,
     cursor: 'pointer',
-    border: '1px solid transparent',
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: 'transparent',
     transition: 'opacity 150ms ease, background 150ms ease',
   };
   if (variant === 'primary') return { ...base, background: color.primary, color: '#fff' };
   if (variant === 'secondary') return { ...base, background: color.muted, color: color.foreground, borderColor: color.border };
-  if (variant === 'danger') return { ...base, background: 'transparent', color: color.destructive, border: 'none', padding: '4px 8px' };
-  return { ...base, background: 'transparent', color: color.mutedForeground, border: 'none', padding: 0 };
+  if (variant === 'danger') {
+    return { ...base, background: 'transparent', color: color.destructive, borderStyle: 'none', padding: '4px 8px' };
+  }
+  return { ...base, background: 'transparent', color: color.mutedForeground, borderStyle: 'none', padding: 0 };
 }
 
 export function badgeStyle(tone: 'success' | 'warning' | 'destructive' | 'muted'): CSSProperties {
