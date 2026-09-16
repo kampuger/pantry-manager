@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { resolveNotifyThreshold, formatPHP, type HouseholdNotifyDefaults } from '@pantry/core';
 import { daysUntil, getExpiryBadgeStatus } from '@pantry/ui';
 import { getHouseholdNotificationPrefs, STORAGE_LOCATION_OPTIONS, type Database } from '@pantry/supabase-client';
@@ -215,6 +216,7 @@ function LocationSummary({ items }: { items: PantryItemRow[] }) {
 export default function DashboardPage() {
   const { session, loading: authLoading } = useAuth();
   const { membership, create } = useHousehold();
+  const router = useRouter();
   const [items, setItems] = useState<PantryItemRow[]>([]);
   const [notifyPrefs, setNotifyPrefs] = useState<HouseholdNotifyDefaults>({
     notifyDaysProduce: 2,
@@ -250,21 +252,14 @@ export default function DashboardPage() {
     </header>
   );
 
-  if (authLoading) return null;
+  // The login page is this app's default landing experience — a signed-out
+  // visitor to "/" is sent straight there instead of seeing a limited demo
+  // dashboard.
+  useEffect(() => {
+    if (!authLoading && !session) router.replace('/login');
+  }, [authLoading, session, router]);
 
-  if (!session) {
-    return (
-      <div>
-        {header}
-        <p style={{ color: color.mutedForeground, marginTop: 8, fontSize: 14 }}>
-          <a href="/login" style={{ color: color.primary, fontWeight: 600 }}>
-            Sign in
-          </a>{' '}
-          to see your household&apos;s real numbers.
-        </p>
-      </div>
-    );
-  }
+  if (authLoading || !session) return null;
 
   if (membership === 'loading') {
     return <p style={{ color: color.mutedForeground }}>Loading…</p>;

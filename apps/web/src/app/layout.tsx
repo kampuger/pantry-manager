@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Plus_Jakarta_Sans } from 'next/font/google';
-import { Sidebar } from '@/components/Sidebar';
+import { AppShell } from '@/components/AppShell';
 import { AuthProvider } from '@/lib/AuthProvider';
 import { color } from '@/lib/theme';
 
@@ -28,8 +28,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         }}
       >
         <AuthProvider>
-          <Sidebar />
-          <main style={{ flex: 1, padding: '32px 40px', maxWidth: 960 }}>{children}</main>
+          <AppShell>{children}</AppShell>
         </AuthProvider>
       </body>
     </html>
