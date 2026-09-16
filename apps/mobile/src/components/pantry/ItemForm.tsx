@@ -4,7 +4,7 @@ import { UNIT_OPTIONS, STORAGE_LOCATION_OPTIONS } from '@pantry/supabase-client'
 import { computeExpiryDate } from '@pantry/core';
 import { ChipSelect } from '../ChipSelect';
 import { AppButton } from '../AppButton';
-import { color, cardStyle, inputStyle, font } from '../../lib/theme';
+import { color, radius, cardStyle, inputStyle, font } from '../../lib/theme';
 
 export interface ItemFormValues {
   name: string;
@@ -39,11 +39,13 @@ const EMPTY_VALUES: ItemFormInitialValues = {
 };
 
 export function ItemForm({
+  mode,
   initialValues = EMPTY_VALUES,
   submitLabel,
   onSubmit,
   onCancel,
 }: {
+  mode: 'add' | 'edit';
   initialValues?: ItemFormInitialValues;
   submitLabel: string;
   onSubmit: (values: ItemFormValues) => Promise<void>;
@@ -62,9 +64,7 @@ export function ItemForm({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // `onCancel` is only wired up by the edit-mode caller; the add form has no
-  // Cancel button. It is the component's only add-vs-edit signal.
-  const isEditMode = onCancel != null;
+  const isEditMode = mode === 'edit';
 
   function resetFields() {
     setName(initialValues.name);
@@ -123,6 +123,13 @@ export function ItemForm({
 
   return (
     <View style={styles.form}>
+      <View>
+        <Text style={styles.heading}>{isEditMode ? 'Edit item' : 'Add a pantry item'}</Text>
+        <Text style={styles.subheading}>
+          {isEditMode ? 'Update the details below.' : 'Track what you have and when it expires.'}
+        </Text>
+      </View>
+
       <TextInput placeholder="Name" value={name} onChangeText={setName} style={inputStyle} />
       <TextInput
         placeholder="Quantity"
@@ -135,56 +142,91 @@ export function ItemForm({
       <ChipSelect options={UNIT_OPTIONS} value={unit} onChange={setUnit} />
       <Text style={styles.fieldLabel}>Storage</Text>
       <ChipSelect options={STORAGE_LOCATION_OPTIONS} value={storageLocation} onChange={setStorageLocation} />
-      <View style={styles.switchRow}>
-        <Text style={styles.fieldLabel}>Produce (perishable)</Text>
-        <Switch value={isProduce} onValueChange={handleProduceToggle} />
+
+      <View style={styles.produceGroup}>
+        <View style={styles.switchRow}>
+          <Text style={styles.produceLabel}>Produce (perishable)</Text>
+          <Switch value={isProduce} onValueChange={handleProduceToggle} />
+        </View>
+        {isProduce ? (
+          <View>
+            <Text style={styles.fieldLabel}>Expires</Text>
+            <Text style={[inputStyle, styles.readonlyValue]}>{computedProduceExpiry} (auto — 7 days after purchase)</Text>
+          </View>
+        ) : (
+          <View>
+            <Text style={styles.fieldLabel}>Expires (YYYY-MM-DD)</Text>
+            <TextInput
+              placeholder="2026-12-31"
+              value={manualExpirationDate}
+              onChangeText={setManualExpirationDate}
+              style={inputStyle}
+            />
+          </View>
+        )}
       </View>
-      {isProduce ? (
-        <View>
-          <Text style={styles.fieldLabel}>Expires (auto)</Text>
-          <Text style={[inputStyle, styles.readonlyValue]}>{computedProduceExpiry}</Text>
-        </View>
-      ) : (
-        <View>
-          <Text style={styles.fieldLabel}>Expires (YYYY-MM-DD)</Text>
-          <TextInput
-            placeholder="2026-12-31"
-            value={manualExpirationDate}
-            onChangeText={setManualExpirationDate}
-            style={inputStyle}
-          />
-        </View>
-      )}
-      <Pressable onPress={() => setShowAdvanced((v) => !v)}>
-        <Text style={styles.advancedToggle}>{showAdvanced ? 'Hide advanced' : 'Advanced'}</Text>
-      </Pressable>
-      {showAdvanced && (
-        <View>
-          <Text style={styles.fieldLabel}>Custom reminder (days before expiry)</Text>
-          <TextInput
-            placeholder="Use household default"
-            keyboardType="numeric"
-            value={notifyDaysOverride}
-            onChangeText={setNotifyDaysOverride}
-            style={inputStyle}
-          />
+
+      <View>
+        <Pressable onPress={() => setShowAdvanced((v) => !v)} style={styles.advancedToggleRow}>
+          <Text style={styles.advancedChevron}>{showAdvanced ? '▾' : '▸'}</Text>
+          <Text style={styles.advancedToggle}>Advanced options</Text>
+        </Pressable>
+        {showAdvanced && (
+          <View style={styles.advancedContent}>
+            <Text style={styles.fieldLabel}>Custom reminder (days before expiry)</Text>
+            <TextInput
+              placeholder="Use household default"
+              keyboardType="numeric"
+              value={notifyDaysOverride}
+              onChangeText={setNotifyDaysOverride}
+              style={inputStyle}
+            />
+            <Text style={styles.hint}>Leave blank to use your household&apos;s default reminder timing.</Text>
+          </View>
+        )}
+      </View>
+
+      {error && (
+        <View style={styles.errorBanner}>
+          <Text style={styles.errorText}>{error}</Text>
         </View>
       )}
-      {error && <Text style={styles.error}>{error}</Text>}
+
       <View style={styles.buttonRow}>
-        <AppButton title={submitting ? 'Saving…' : submitLabel} onPress={handleSubmit} disabled={submitting} />
         {onCancel && <AppButton title="Cancel" variant="secondary" onPress={onCancel} />}
+        <AppButton title={submitting ? 'Saving…' : submitLabel} onPress={handleSubmit} disabled={submitting} />
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  form: { ...cardStyle, padding: 16, gap: 10 },
+  form: { ...cardStyle, padding: 20, gap: 14 },
+  heading: { fontSize: 18, fontFamily: font.bold, color: color.foreground },
+  subheading: { fontSize: 13, color: color.mutedForeground, fontFamily: font.regular, marginTop: 2 },
   fieldLabel: { fontSize: 12, color: color.mutedForeground, fontFamily: font.medium },
+  produceGroup: {
+    backgroundColor: color.muted,
+    borderWidth: 1,
+    borderColor: color.border,
+    borderRadius: radius.md,
+    padding: 14,
+    gap: 10,
+  },
+  produceLabel: { fontSize: 14, fontFamily: font.semibold, color: color.foreground },
   switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  readonlyValue: { color: color.mutedForeground, backgroundColor: color.muted },
+  readonlyValue: { color: color.mutedForeground, backgroundColor: color.card },
+  advancedToggleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  advancedChevron: { fontSize: 11, color: color.mutedForeground },
   advancedToggle: { color: color.primary, fontFamily: font.semibold, fontSize: 13 },
-  error: { color: color.destructive, fontFamily: font.regular, fontSize: 13 },
-  buttonRow: { flexDirection: 'row', gap: 8 },
+  advancedContent: { marginTop: 10, gap: 6 },
+  hint: { fontSize: 12, color: color.mutedForeground, fontFamily: font.regular },
+  errorBanner: {
+    backgroundColor: color.destructiveBg,
+    borderRadius: radius.sm,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+  },
+  errorText: { color: color.destructive, fontFamily: font.regular, fontSize: 13 },
+  buttonRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, borderTopWidth: 1, borderTopColor: color.border, paddingTop: 14 },
 });

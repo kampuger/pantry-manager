@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View, ActivityIndicator, Pressable } from 'react-native';
+import { ScrollView, StyleSheet, Text, View, ActivityIndicator, Pressable, TextInput, Modal } from 'react-native';
 import { getFreshnessFlag, resolveNotifyThreshold, type HouseholdNotifyDefaults } from '@pantry/core';
-import { daysUntil, groupItemsByLocation } from '@pantry/ui';
+import { daysUntil, getExpiryBadgeStatus, groupItemsByLocation } from '@pantry/ui';
 import {
   addPantryItem,
   updatePantryItem,
@@ -16,10 +16,11 @@ import { useAuth } from '../lib/AuthProvider';
 import { useHousehold } from '../lib/useHousehold';
 import { CreateHouseholdPrompt } from '../components/CreateHouseholdPrompt';
 import { Badge } from '../components/Badge';
+import { AppButton } from '../components/AppButton';
 import { ItemForm, type ItemFormValues } from '../components/pantry/ItemForm';
 import { PantryLocationGroup } from '../components/pantry/PantryLocationGroup';
 import { NotificationPrefsModal } from '../components/pantry/NotificationPrefsModal';
-import { color, radius, cardStyle, font } from '../lib/theme';
+import { color, radius, cardStyle, inputStyle, font } from '../lib/theme';
 
 type PantryItemRow = Database['public']['Tables']['pantry_items']['Row'];
 
@@ -62,7 +63,10 @@ export function PantryScreen() {
   const { membership, create } = useHousehold();
   const [items, setItems] = useState<PantryItemRow[]>([]);
   const [editingItem, setEditingItem] = useState<PantryItemRow | null>(null);
+  const [showAddForm, setShowAddForm] = useState(false);
   const [showPrefs, setShowPrefs] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showExpiringOnly, setShowExpiringOnly] = useState(false);
   const [screenError, setScreenError] = useState<string | null>(null);
   // Seeded with the households table's own defaults so the first paint
   // (before the fetch below resolves) already matches what a fresh
@@ -127,6 +131,7 @@ export function PantryScreen() {
       expirationDate: values.expirationDate,
       notifyDaysBeforeExpiry: values.notifyDaysOverride,
     });
+    setShowAddForm(false);
     await refreshItems(membership.householdId);
   }
 
@@ -166,8 +171,22 @@ export function PantryScreen() {
     }
   }
 
+  const trimmedQuery = searchQuery.trim().toLowerCase();
+  const visibleItems = items.filter((item) => {
+    if (trimmedQuery && !item.name.toLowerCase().includes(trimmedQuery)) return false;
+    if (showExpiringOnly) {
+      const threshold = resolveNotifyThreshold(
+        { isProduce: item.is_produce, notifyDaysBeforeExpiry: item.notify_days_before_expiry },
+        notifyPrefs
+      );
+      const status = getExpiryBadgeStatus(daysUntil(item.expiration_date), threshold);
+      if (status !== 'warning' && status !== 'expired') return false;
+    }
+    return true;
+  });
+
   const groups = groupItemsByLocation(
-    items.map((item) => ({
+    visibleItems.map((item) => ({
       id: item.id,
       storageLocation: item.storage_location,
       daysUntilExpiry: daysUntil(item.expiration_date),
@@ -184,45 +203,46 @@ export function PantryScreen() {
       <View style={styles.topHeaderRow}>
         <Text style={styles.title}>Pantry Inventory</Text>
         {membership && membership !== 'loading' && (
-          <Pressable
-            onPress={() => setShowPrefs(true)}
-            style={({ pressed }) => [styles.gearButton, pressed && styles.gearButtonPressed]}
-          >
-            <Text style={styles.gearIcon}>⚙️</Text>
-          </Pressable>
+          <View style={styles.headerButtons}>
+            <Pressable
+              onPress={() => setShowPrefs(true)}
+              style={({ pressed }) => [styles.gearButton, pressed && styles.gearButtonPressed]}
+            >
+              <Text style={styles.gearIcon}>⚙️</Text>
+            </Pressable>
+            <AppButton title="+ Add" onPress={() => setShowAddForm(true)} style={styles.addButton} />
+          </View>
         )}
       </View>
       {membership === 'loading' && <ActivityIndicator color={color.primary} />}
       {membership === null && <CreateHouseholdPrompt onCreate={create} />}
       {membership && membership !== 'loading' && (
         <>
-          {/* Both branches sit at the same JSX position, so without a distinct
-              `key` React reuses one ItemForm instance and its useState
-              initializers never re-run — the edit form would open showing the
-              previous render's values and save those over the real item. */}
-          {editingItem ? (
-            <ItemForm
-              key={`edit-${editingItem.id}`}
-              submitLabel="Save changes"
-              onCancel={() => setEditingItem(null)}
-              initialValues={{
-                name: editingItem.name,
-                quantity: editingItem.quantity,
-                unit: editingItem.unit,
-                storageLocation: editingItem.storage_location,
-                isProduce: editingItem.is_produce,
-                expirationDate: editingItem.expiration_date,
-                notifyDaysOverride: editingItem.notify_days_before_expiry,
-                purchaseDate: editingItem.purchase_date,
-              }}
-              onSubmit={handleEditSave}
+          <View style={styles.toolbarRow}>
+            <TextInput
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Search items…"
+              style={[inputStyle, styles.searchInput]}
             />
-          ) : (
-            <ItemForm key="add" submitLabel="Add item" onSubmit={handleAdd} />
-          )}
+            <Pressable
+              onPress={() => setShowExpiringOnly((v) => !v)}
+              style={[styles.filterChip, showExpiringOnly && styles.filterChipActive]}
+            >
+              <Text style={[styles.filterChipText, showExpiringOnly && styles.filterChipTextActive]}>
+                ⚠️ Expiring or expired
+              </Text>
+            </Pressable>
+          </View>
           {screenError && <Text style={styles.errorBanner}>{screenError}</Text>}
           {!screenError && items.length === 0 && (
             <Text style={styles.emptyState}>No pantry items yet.</Text>
+          )}
+          {!screenError && items.length > 0 && visibleItems.length === 0 && (
+            <Text style={styles.emptyState}>
+              No items match{trimmedQuery ? ` "${searchQuery.trim()}"` : ''}
+              {showExpiringOnly ? ' and are expiring or expired' : ''}.
+            </Text>
           )}
           {groups.map((group) => (
             <PantryLocationGroup
@@ -230,13 +250,46 @@ export function PantryScreen() {
               icon={LOCATION_META[group.location].icon}
               label={LOCATION_META[group.location].label}
               expiringSoonCount={group.expiringSoonCount}
-              items={items.filter((item) => group.itemIds.includes(item.id))}
+              expiredCount={group.expiredCount}
+              items={visibleItems.filter((item) => group.itemIds.includes(item.id))}
               notifyPrefs={notifyPrefs}
               onEdit={setEditingItem}
               onConsumed={(item) => handleArchive(item, 'CONSUMED')}
               onExpired={(item) => handleArchive(item, 'SPOILED_DISCARDED')}
             />
           ))}
+          <Modal visible={showAddForm} transparent animationType="fade" onRequestClose={() => setShowAddForm(false)}>
+            <View style={styles.modalOverlay}>
+              <ScrollView contentContainerStyle={styles.modalScrollContent}>
+                <ItemForm mode="add" submitLabel="Add item" onCancel={() => setShowAddForm(false)} onSubmit={handleAdd} />
+              </ScrollView>
+            </View>
+          </Modal>
+          <Modal visible={!!editingItem} transparent animationType="fade" onRequestClose={() => setEditingItem(null)}>
+            <View style={styles.modalOverlay}>
+              <ScrollView contentContainerStyle={styles.modalScrollContent}>
+                {editingItem && (
+                  <ItemForm
+                    key={`edit-${editingItem.id}`}
+                    mode="edit"
+                    submitLabel="Save changes"
+                    onCancel={() => setEditingItem(null)}
+                    initialValues={{
+                      name: editingItem.name,
+                      quantity: editingItem.quantity,
+                      unit: editingItem.unit,
+                      storageLocation: editingItem.storage_location,
+                      isProduce: editingItem.is_produce,
+                      expirationDate: editingItem.expiration_date,
+                      notifyDaysOverride: editingItem.notify_days_before_expiry,
+                      purchaseDate: editingItem.purchase_date,
+                    }}
+                    onSubmit={handleEditSave}
+                  />
+                )}
+              </ScrollView>
+            </View>
+          </Modal>
           <NotificationPrefsModal
             householdId={membership.householdId}
             isAdmin={membership.role !== 'MEMBER'}
@@ -259,6 +312,8 @@ const styles = StyleSheet.create({
     gap: 12,
     marginBottom: 6,
   },
+  headerButtons: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  addButton: { paddingVertical: 8, paddingHorizontal: 14 },
   gearButton: {
     width: 40,
     height: 40,
@@ -272,6 +327,19 @@ const styles = StyleSheet.create({
   gearButtonPressed: { backgroundColor: color.muted },
   gearIcon: { fontSize: 18 },
   title: { flexShrink: 1, fontSize: 26, fontFamily: font.bold, color: color.foreground, letterSpacing: -0.5 },
+  toolbarRow: { flexDirection: 'row', gap: 10, alignItems: 'center' },
+  searchInput: { flex: 1 },
+  filterChip: {
+    borderRadius: radius.pill,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    backgroundColor: color.muted,
+    borderWidth: 1,
+    borderColor: color.border,
+  },
+  filterChipActive: { backgroundColor: color.primary, borderColor: color.primary },
+  filterChipText: { fontSize: 13, fontFamily: font.semibold, color: color.foreground },
+  filterChipTextActive: { color: '#fff' },
   itemCard: { ...cardStyle, paddingVertical: 14, paddingHorizontal: 16, gap: 8 },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 },
   name: { flex: 1, fontSize: 15, lineHeight: 21, fontFamily: font.semibold, color: color.foreground },
@@ -302,4 +370,11 @@ const styles = StyleSheet.create({
     fontFamily: font.regular,
     overflow: 'hidden',
   },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.4)',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  modalScrollContent: { flexGrow: 1, justifyContent: 'center' },
 });
