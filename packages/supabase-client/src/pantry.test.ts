@@ -1,9 +1,10 @@
-import { addPantryItem, updatePantryItem, archivePantryItem } from './pantry';
+import { addPantryItem, addPantryItems, updatePantryItem, archivePantryItem } from './pantry';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
 function fakePantryClient(config: {
   insert?: (payload: any) => Promise<{ data: any; error: any }>;
+  insertMany?: (payload: any) => Promise<{ data: any; error: any }>;
   update?: (payload: any, id: string) => Promise<{ data: any; error: any }>;
   rpc?: (fn: string, args: any) => Promise<{ data: any; error: any }>;
 }): SupabaseClient<Database> & { lastPayload: any; lastRpc: any } {
@@ -13,7 +14,12 @@ function fakePantryClient(config: {
       return {
         insert: (payload: any) => {
           client.lastPayload = payload;
-          return { select: () => ({ single: async () => config.insert!(payload) }) };
+          return {
+            select: () =>
+              Array.isArray(payload)
+                ? config.insertMany!(payload)
+                : { single: async () => config.insert!(payload) },
+          };
         },
         update: (payload: any) => {
           client.lastPayload = payload;
@@ -116,6 +122,50 @@ describe('addPantryItem', () => {
         isProduce: false,
       })
     ).rejects.toThrow('insert failed');
+  });
+});
+
+describe('addPantryItems', () => {
+  it('inserts every row in one call, applying the same defaults as addPantryItem', async () => {
+    const rows = [
+      { id: 'item-1', name: 'Fresh Milk' },
+      { id: 'item-2', name: 'Rice' },
+    ];
+    const client = fakePantryClient({ insertMany: async () => ({ data: rows, error: null }) });
+
+    const created = await addPantryItems(client, 'house-1', 'user-1', [
+      { name: 'Fresh Milk', quantity: 1, unit: 'L', storageLocation: 'FRIDGE', isProduce: true, expirationDate: '2026-09-20' },
+      { name: 'Rice', quantity: 2, unit: 'kg', storageLocation: 'PANTRY', isProduce: false },
+    ]);
+
+    expect(created).toEqual(rows);
+    expect(client.lastPayload).toHaveLength(2);
+    expect(client.lastPayload[0]).toMatchObject({
+      household_id: 'house-1',
+      created_by: 'user-1',
+      name: 'Fresh Milk',
+      storage_location: 'FRIDGE',
+      is_produce: true,
+      expiration_date: '2026-09-20',
+    });
+    expect(client.lastPayload[1]).toMatchObject({
+      name: 'Rice',
+      is_produce: false,
+      expiration_date: null,
+      notify_days_before_expiry: null,
+      purchase_price: null,
+    });
+    expect(client.lastPayload[0].purchase_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it('throws when the bulk insert errors', async () => {
+    const client = fakePantryClient({ insertMany: async () => ({ data: null, error: new Error('bulk insert failed') }) });
+
+    await expect(
+      addPantryItems(client, 'house-1', 'user-1', [
+        { name: 'Rice', quantity: 2, unit: 'kg', storageLocation: 'PANTRY', isProduce: false },
+      ])
+    ).rejects.toThrow('bulk insert failed');
   });
 });
 

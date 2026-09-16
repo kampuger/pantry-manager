@@ -6,6 +6,7 @@ import { getFreshnessFlag, resolveNotifyThreshold, formatPHP, type HouseholdNoti
 import { daysUntil, getExpiryBadgeStatus, groupItemsByLocation } from '@pantry/ui';
 import {
   addPantryItem,
+  addPantryItems,
   updatePantryItem,
   archivePantryItem,
   getHouseholdNotificationPrefs,
@@ -18,6 +19,7 @@ import { useAuth } from '@/lib/AuthProvider';
 import { useHousehold } from '@/lib/useHousehold';
 import { CreateHouseholdPrompt } from '@/components/CreateHouseholdPrompt';
 import { ItemForm, type ItemFormValues } from '@/components/pantry/ItemForm';
+import { BulkAddModal, type BulkItemInput } from '@/components/pantry/BulkAddModal';
 import { PantryLocationGroup } from '@/components/pantry/PantryLocationGroup';
 import { NotificationPrefsModal } from '@/components/pantry/NotificationPrefsModal';
 import { color, radius, cardStyle, inputStyle, buttonStyle, badgeStyle } from '@/lib/theme';
@@ -90,6 +92,7 @@ function PantryPageContent() {
   const [items, setItems] = useState<PantryItemRow[]>([]);
   const [editingItem, setEditingItem] = useState<PantryItemRow | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [showBulkAdd, setShowBulkAdd] = useState(false);
   const [showPrefs, setShowPrefs] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showExpiringOnly, setShowExpiringOnly] = useState(searchParams.get('filter') === 'expiring');
@@ -173,6 +176,13 @@ function PantryPageContent() {
       purchasePrice: values.purchasePrice,
     });
     setShowAddForm(false);
+    await refreshItems(membership.householdId);
+  }
+
+  async function handleBulkAdd(bulkItems: BulkItemInput[]) {
+    if (!membership || membership === 'loading') return;
+    await addPantryItems(supabase, membership.householdId, session!.user.id, bulkItems);
+    setShowBulkAdd(false);
     await refreshItems(membership.householdId);
   }
 
@@ -282,6 +292,12 @@ function PantryPageContent() {
               aria-label="Notification preferences"
             >
               ⚙️ Notifications
+            </button>
+            <button
+              onClick={() => setShowBulkAdd(true)}
+              style={{ ...buttonStyle('secondary'), padding: '8px 16px', borderRadius: radius.pill, whiteSpace: 'nowrap' }}
+            >
+              + Add multiple
             </button>
             <button
               onClick={() => setShowAddForm(true)}
@@ -396,6 +412,11 @@ function PantryPageContent() {
                   onSubmit={handleAdd}
                 />
               </div>
+            </div>
+          )}
+          {showBulkAdd && (
+            <div style={MODAL_OVERLAY_STYLE}>
+              <BulkAddModal onCancel={() => setShowBulkAdd(false)} onSubmit={handleBulkAdd} />
             </div>
           )}
           {editingItem && (

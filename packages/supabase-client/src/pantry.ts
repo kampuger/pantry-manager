@@ -42,6 +42,41 @@ export async function addPantryItem(
   return data;
 }
 
+/**
+ * Inserts several pantry items in one round trip (one bulk-add submit).
+ * Applies the same defaults as addPantryItem (today's purchase_date, nulls
+ * for unset optional fields) to every row.
+ */
+export async function addPantryItems(
+  client: SupabaseClient<Database>,
+  householdId: string,
+  userId: string,
+  inputs: NewPantryItemInput[]
+): Promise<PantryItemRow[]> {
+  const purchaseDate = new Date().toISOString().slice(0, 10);
+  const { data, error } = await client
+    .from('pantry_items')
+    .insert(
+      inputs.map((input) => ({
+        household_id: householdId,
+        created_by: userId,
+        name: input.name,
+        quantity: input.quantity,
+        unit: input.unit,
+        storage_location: input.storageLocation,
+        is_produce: input.isProduce,
+        purchase_date: purchaseDate,
+        expiration_date: input.expirationDate ?? null,
+        notify_days_before_expiry: input.notifyDaysBeforeExpiry ?? null,
+        purchase_price: input.purchasePrice ?? null,
+      }))
+    )
+    .select();
+
+  if (error) throw error;
+  return data;
+}
+
 export interface UpdatePantryItemInput {
   name?: string;
   quantity?: number;
