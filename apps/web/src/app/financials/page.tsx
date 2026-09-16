@@ -208,7 +208,9 @@ export default function FinancialsPage() {
       </div>
 
       <div style={{ ...cardStyle, marginTop: 20, padding: 24, maxWidth: 560, background: color.destructiveBg, borderColor: color.destructive }}>
-        <div style={{ color: color.destructive, fontSize: 13 }}>Wasted (lifetime — expired/discarded items)</div>
+        <div style={{ color: color.destructive, fontSize: 13 }}>
+          Wasted (lifetime — {wastedLogs.length} expired/discarded item{wastedLogs.length === 1 ? '' : 's'})
+        </div>
         <div style={{ fontSize: 26, fontWeight: 700, marginTop: 8, color: color.destructive }}>{formatPHP(wastedValue)}</div>
       </div>
     </div>

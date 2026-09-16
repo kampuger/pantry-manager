@@ -176,7 +176,9 @@ export function FinancialsScreen() {
       </View>
 
       <View style={styles.wastedCard}>
-        <Text style={styles.wastedLabel}>Wasted (lifetime — expired/discarded items)</Text>
+        <Text style={styles.wastedLabel}>
+          Wasted (lifetime — {wastedLogs.length} expired/discarded item{wastedLogs.length === 1 ? '' : 's'})
+        </Text>
         <Text style={styles.wastedValue}>{formatPHP(wastedValue)}</Text>
       </View>
     </ScrollView>
