@@ -295,7 +295,7 @@ function PantryPageContent() {
                 whiteSpace: 'nowrap',
               }}
             >
-              ⚠️ Expiring soon
+              ⚠️ Expiring or expired
             </button>
           </div>
           {pageError && (
@@ -350,7 +350,7 @@ function PantryPageContent() {
               }}
             >
               No items match{trimmedQuery ? ` "${searchQuery.trim()}"` : ''}
-              {showExpiringOnly ? ' and are expiring soon' : ''}.
+              {showExpiringOnly ? ' and are expiring or expired' : ''}.
             </p>
           )}
           {groups.map((group) => (
@@ -359,6 +359,7 @@ function PantryPageContent() {
               icon={LOCATION_META[group.location].icon}
               label={LOCATION_META[group.location].label}
               expiringSoonCount={group.expiringSoonCount}
+              expiredCount={group.expiredCount}
               items={visibleItems.filter((item) => group.itemIds.includes(item.id))}
               notifyPrefs={notifyPrefs}
               onEdit={setEditingItem}

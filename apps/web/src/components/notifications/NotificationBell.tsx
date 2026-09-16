@@ -2,20 +2,23 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import {
-  getPantryItemReminders,
-  getMemberNotificationsEnabled,
-  type PantryItemReminder,
-} from '@pantry/supabase-client';
-import { daysUntil } from '@pantry/ui';
+import { getMemberNotificationsEnabled, getHouseholdNotificationPrefs } from '@pantry/supabase-client';
+import { daysUntil, getExpiryBadgeStatus } from '@pantry/ui';
+import { resolveNotifyThreshold } from '@pantry/core';
 import { supabase } from '@/lib/supabaseClient';
 import { color, cardStyle, radius } from '@/lib/theme';
 import { onNotificationsChanged } from '@/lib/notificationEvents';
 
+interface ReminderRow {
+  pantryItemId: string;
+  name: string;
+  expirationDate: string;
+}
+
 export function NotificationBell({ householdId, userId }: { householdId: string; userId: string }) {
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement>(null);
-  const [reminders, setReminders] = useState<PantryItemReminder[]>([]);
+  const [reminders, setReminders] = useState<ReminderRow[]>([]);
   const [enabled, setEnabled] = useState(true);
   const [open, setOpen] = useState(false);
 
@@ -47,12 +50,41 @@ export function NotificationBell({ householdId, userId }: { householdId: string;
       const value = await getMemberNotificationsEnabled(supabase, householdId, userId);
       if (cancelled) return;
       setEnabled(value);
-      if (value) {
-        const list = await getPantryItemReminders(supabase, householdId);
-        if (!cancelled) setReminders(list);
-      } else {
+      if (!value) {
         setReminders([]);
+        return;
       }
+
+      // Computed live from pantry_items + the household's own thresholds —
+      // the SAME status logic the Pantry page's badges use — rather than
+      // read from pantry_item_reminders, which is only refreshed once a day
+      // by the cron job (or on "Send reminders now"). Reading that table
+      // here would make the bell up to a day stale relative to what the
+      // Pantry page already shows as Warning/Expired.
+      const [prefs, itemsResult] = await Promise.all([
+        getHouseholdNotificationPrefs(supabase, householdId),
+        supabase
+          .from('pantry_items')
+          .select('id, name, expiration_date, is_produce, notify_days_before_expiry')
+          .eq('household_id', householdId)
+          .eq('is_archived', false)
+          .not('expiration_date', 'is', null),
+      ]);
+      if (cancelled) return;
+
+      const list = (itemsResult.data ?? [])
+        .map((item) => {
+          const threshold = resolveNotifyThreshold(
+            { isProduce: item.is_produce, notifyDaysBeforeExpiry: item.notify_days_before_expiry },
+            prefs
+          );
+          const status = getExpiryBadgeStatus(daysUntil(item.expiration_date), threshold);
+          return { pantryItemId: item.id, name: item.name, expirationDate: item.expiration_date!, status };
+        })
+        .filter((item) => item.status === 'warning' || item.status === 'expired')
+        .sort((a, b) => (daysUntil(a.expirationDate) ?? 0) - (daysUntil(b.expirationDate) ?? 0));
+
+      setReminders(list);
     }
 
     refresh();
@@ -163,7 +195,7 @@ export function NotificationBell({ householdId, userId }: { householdId: string;
                   color: color.primary,
                 }}
               >
-                View all expiring items →
+                View all expiring or expired items →
               </button>
             </>
           )}

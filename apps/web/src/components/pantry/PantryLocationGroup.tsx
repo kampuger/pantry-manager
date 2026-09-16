@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { daysUntil, getExpiryBadgeStatus, type ExpiryBadgeStatus } from '@pantry/ui';
 import { resolveNotifyThreshold, type HouseholdNotifyDefaults } from '@pantry/core';
 import type { Database } from '@pantry/supabase-client';
@@ -27,6 +28,7 @@ export function PantryLocationGroup({
   icon,
   label,
   expiringSoonCount,
+  expiredCount,
   items,
   notifyPrefs,
   onEdit,
@@ -36,15 +38,47 @@ export function PantryLocationGroup({
   icon: string;
   label: string;
   expiringSoonCount: number;
+  expiredCount: number;
   items: PantryItemRow[];
   notifyPrefs: HouseholdNotifyDefaults;
   onEdit: (item: PantryItemRow) => void;
   onConsumed: (item: PantryItemRow) => void;
   onExpired: (item: PantryItemRow) => void;
 }) {
+  const [collapsed, setCollapsed] = useState(false);
+
   return (
     <section style={{ marginTop: 32 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
+      <button
+        onClick={() => setCollapsed((v) => !v)}
+        aria-expanded={!collapsed}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          width: '100%',
+          flexWrap: 'wrap',
+          background: 'none',
+          border: 'none',
+          padding: 0,
+          marginBottom: collapsed ? 0 : 14,
+          cursor: 'pointer',
+          textAlign: 'left',
+          fontFamily: 'inherit',
+        }}
+      >
+        <span
+          aria-hidden
+          style={{
+            fontSize: 11,
+            color: color.mutedForeground,
+            transform: collapsed ? 'none' : 'rotate(90deg)',
+            transition: 'transform 150ms ease',
+            flexShrink: 0,
+          }}
+        >
+          ▸
+        </span>
         <span
           aria-hidden
           style={{
@@ -64,94 +98,101 @@ export function PantryLocationGroup({
           {icon}
         </span>
         <div style={{ display: 'grid', gap: 2, minWidth: 0 }}>
-          <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0, letterSpacing: '-0.01em' }}>{label}</h2>
+          <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0, letterSpacing: '-0.01em', color: color.foreground }}>
+            {label}
+          </h2>
           <span style={{ color: color.mutedForeground, fontSize: 12, fontWeight: 600, letterSpacing: '0.02em' }}>
             {items.length} item{items.length === 1 ? '' : 's'}
           </span>
         </div>
-        {expiringSoonCount > 0 && (
-          <span style={{ ...badgeStyle('warning'), marginLeft: 'auto' }}>{expiringSoonCount} expiring soon</span>
-        )}
-      </div>
-      <div style={{ display: 'grid', gap: 10 }}>
-        {items.map((item) => {
-          const threshold = resolveNotifyThreshold(
-            { isProduce: item.is_produce, notifyDaysBeforeExpiry: item.notify_days_before_expiry },
-            notifyPrefs
-          );
-          const status = getExpiryBadgeStatus(daysUntil(item.expiration_date), threshold);
-          return (
-            <div
-              key={item.id}
-              style={{
-                ...cardStyle,
-                borderLeft: `3px solid ${EXPIRY_ACCENT[status]}`,
-                padding: '14px 16px',
-                display: 'grid',
-                gap: 10,
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-                <strong style={{ fontSize: 15, fontWeight: 700, lineHeight: 1.35, overflowWrap: 'anywhere' }}>
-                  {item.is_produce ? '🥬 ' : ''}
-                  {item.name}
-                </strong>
-                <span style={{ ...badgeStyle(EXPIRY_TONE[status]), flexShrink: 0, textTransform: 'capitalize' }}>
-                  {status}
-                </span>
-              </div>
+        <div style={{ display: 'flex', gap: 6, marginLeft: 'auto', flexWrap: 'wrap' }}>
+          {expiringSoonCount > 0 && (
+            <span style={badgeStyle('warning')}>{expiringSoonCount} expiring soon</span>
+          )}
+          {expiredCount > 0 && <span style={badgeStyle('destructive')}>{expiredCount} expired</span>}
+        </div>
+      </button>
+      {!collapsed && (
+        <div style={{ display: 'grid', gap: 10 }}>
+          {items.map((item) => {
+            const threshold = resolveNotifyThreshold(
+              { isProduce: item.is_produce, notifyDaysBeforeExpiry: item.notify_days_before_expiry },
+              notifyPrefs
+            );
+            const status = getExpiryBadgeStatus(daysUntil(item.expiration_date), threshold);
+            return (
               <div
+                key={item.id}
                 style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  flexWrap: 'wrap',
-                  color: color.mutedForeground,
-                  fontSize: 13,
+                  ...cardStyle,
+                  borderLeft: `3px solid ${EXPIRY_ACCENT[status]}`,
+                  padding: '14px 16px',
+                  display: 'grid',
+                  gap: 10,
                 }}
               >
-                <span style={badgeStyle('muted')}>
-                  {item.quantity} {item.unit}
-                </span>
-                {item.expiration_date && <span>Expires {item.expiration_date}</span>}
-              </div>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  flexWrap: 'wrap',
-                  borderTop: `1px solid ${color.border}`,
-                  paddingTop: 10,
-                }}
-              >
-                <button onClick={() => onEdit(item)} style={{ ...buttonStyle('secondary'), padding: '8px 14px' }}>
-                  Edit
-                </button>
-                <button
-                  onClick={() => onConsumed(item)}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                  <strong style={{ fontSize: 15, fontWeight: 700, lineHeight: 1.35, overflowWrap: 'anywhere' }}>
+                    {item.is_produce ? '🥬 ' : ''}
+                    {item.name}
+                  </strong>
+                  <span style={{ ...badgeStyle(EXPIRY_TONE[status]), flexShrink: 0, textTransform: 'capitalize' }}>
+                    {status}
+                  </span>
+                </div>
+                <div
                   style={{
-                    ...buttonStyle('secondary'),
-                    padding: '8px 14px',
-                    background: color.successBg,
-                    borderColor: color.border,
-                    // primaryDark (not primary) keeps AA contrast on successBg.
-                    color: color.primaryDark,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    flexWrap: 'wrap',
+                    color: color.mutedForeground,
+                    fontSize: 13,
                   }}
                 >
-                  Consumed
-                </button>
-                <button
-                  onClick={() => onExpired(item)}
-                  style={{ ...buttonStyle('danger'), padding: '8px 10px', marginLeft: 'auto' }}
+                  <span style={badgeStyle('muted')}>
+                    {item.quantity} {item.unit}
+                  </span>
+                  {item.expiration_date && <span>Expires {item.expiration_date}</span>}
+                </div>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    flexWrap: 'wrap',
+                    borderTop: `1px solid ${color.border}`,
+                    paddingTop: 10,
+                  }}
                 >
-                  Expired/Discard
-                </button>
+                  <button onClick={() => onEdit(item)} style={{ ...buttonStyle('secondary'), padding: '8px 14px' }}>
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => onConsumed(item)}
+                    style={{
+                      ...buttonStyle('secondary'),
+                      padding: '8px 14px',
+                      background: color.successBg,
+                      borderColor: color.border,
+                      // primaryDark (not primary) keeps AA contrast on successBg.
+                      color: color.primaryDark,
+                    }}
+                  >
+                    Consumed
+                  </button>
+                  <button
+                    onClick={() => onExpired(item)}
+                    style={{ ...buttonStyle('danger'), padding: '8px 10px', marginLeft: 'auto' }}
+                  >
+                    Expired/Discard
+                  </button>
+                </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
     </section>
   );
 }

@@ -12,6 +12,7 @@ export interface LocationGroup {
   location: string;
   itemIds: string[];
   expiringSoonCount: number;
+  expiredCount: number;
 }
 
 export function groupItemsByLocation(
@@ -29,14 +30,13 @@ export function groupItemsByLocation(
     .filter((location) => byLocation.has(location))
     .map((location) => {
       const groupItems = byLocation.get(location)!;
-      // 'expired' is deliberately excluded: the header pill reads "N expiring
-      // soon", which is a call to use those items before they go. Items that
-      // are already past their date can no longer be saved, and each one
-      // already carries its own "Expired" badge on the card.
-      const expiringSoonCount = groupItems.filter((item) => {
+      let expiringSoonCount = 0;
+      let expiredCount = 0;
+      for (const item of groupItems) {
         const status = getExpiryBadgeStatus(item.daysUntilExpiry, item.warningThresholdDays);
-        return status === 'warning';
-      }).length;
-      return { location, itemIds: groupItems.map((item) => item.id), expiringSoonCount };
+        if (status === 'warning') expiringSoonCount++;
+        else if (status === 'expired') expiredCount++;
+      }
+      return { location, itemIds: groupItems.map((item) => item.id), expiringSoonCount, expiredCount };
     });
 }
