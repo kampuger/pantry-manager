@@ -59,11 +59,14 @@ Deno.serve(async (req) => {
   }
   const callerId = userData.user.id;
 
-  const { data: adminRow } = await admin
+  const { data: adminRow, error: adminRowError } = await admin
     .from('platform_admins')
     .select('user_id')
     .eq('user_id', callerId)
     .maybeSingle();
+  if (adminRowError) {
+    return jsonResponse({ status: 'error', message: adminRowError.message }, 500);
+  }
   if (!adminRow) {
     return jsonResponse({ status: 'error', message: 'Forbidden: platform admin access required' }, 403);
   }
