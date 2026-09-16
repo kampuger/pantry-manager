@@ -134,21 +134,35 @@ export default function FinancialsPage() {
 
   // "Expiring soon" matches the same Warning+Expired grouping as the
   // Pantry page's own filter, for consistent terminology across the app.
+  // Kept as its own bucket rather than folded into "Expiring soon" — an
+  // item already past its date but not yet marked Consumed/Discarded is a
+  // meaningfully different risk than one merely approaching expiry, and is
+  // NOT the same as "Wasted" below (which only counts items actually
+  // archived as discarded/expired via the movement log).
   const itemsWithStatus = items.map((item) => {
     const threshold = resolveNotifyThreshold(
       { isProduce: item.is_produce, notifyDaysBeforeExpiry: item.notify_days_before_expiry },
       notifyPrefs
     );
     const status = getExpiryBadgeStatus(daysUntil(item.expiration_date), threshold);
-    return { item, expiringSoon: status === 'warning' || status === 'expired' };
+    return { item, status };
   });
-  const expiringItems = itemsWithStatus.filter((x) => x.expiringSoon).map((x) => x.item);
-  const notExpiringItems = itemsWithStatus.filter((x) => !x.expiringSoon).map((x) => x.item);
+  const expiredItems = itemsWithStatus.filter((x) => x.status === 'expired').map((x) => x.item);
+  const warningItems = itemsWithStatus.filter((x) => x.status === 'warning').map((x) => x.item);
+  const notExpiringItems = itemsWithStatus
+    .filter((x) => x.status === 'good' || x.status === 'unknown')
+    .map((x) => x.item);
   const expiryRows: SplitRow[] = [
     {
+      label: 'Expired (not yet discarded)',
+      value: expiredItems.reduce((sum, i) => sum + (i.purchase_price ?? 0), 0),
+      count: expiredItems.length,
+      tone: color.destructive,
+    },
+    {
       label: 'Expiring soon',
-      value: expiringItems.reduce((sum, i) => sum + (i.purchase_price ?? 0), 0),
-      count: expiringItems.length,
+      value: warningItems.reduce((sum, i) => sum + (i.purchase_price ?? 0), 0),
+      count: warningItems.length,
       tone: color.warning,
     },
     {
