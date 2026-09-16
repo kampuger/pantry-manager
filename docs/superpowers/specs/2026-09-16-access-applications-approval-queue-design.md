@@ -1,7 +1,10 @@
-# Access Applications: Self-Service Apply-for-Access with Admin Approval Queue
+# Access Applications & User Management: Apply-for-Access, Approval Queue, Delete + Bulk Actions
 
 Status: Approved for planning
-Date: 2026-09-16
+Date: 2026-09-16 (amended same day, before implementation, to add Delete
+user and bulk actions on the existing user table — user table Delete/bulk
+were not in the original scope; everything else in this document is
+unchanged from the first draft)
 
 ## Problem
 
@@ -18,6 +21,16 @@ several requests in one sitting. This spec closes the gap directly: it
 removes the ungated self-signup path and replaces it with a request +
 approval flow built on top of the invite mechanism already shipped.
 
+Alongside that, the existing user table on `/admin/users` (shipped just
+before this spec) currently only supports per-row Suspend/Unsuspend and
+Make-admin/Remove-admin — there is no way to delete a user's account at
+all, and every action works one row at a time. This amendment adds Delete
+(the account is gone, not just locked out) and extends the same
+checkbox-selection + bulk-action pattern this spec already designed for
+the applications queue to the user table too, so Suspend, Unsuspend, and
+Delete can all be applied to several users in one sitting the same way
+Approve/Reject can for applications.
+
 ## Non-goals
 
 - Any captcha, rate-limiting, or other anti-abuse tooling on the public
@@ -32,9 +45,21 @@ approval flow built on top of the invite mechanism already shipped.
   etc.). They check the queue on `/admin/users` when they choose to.
 - `apps/mobile` (the React Native app). Web only, matching the platform
   admin feature's own scope decision.
-- Any change to the platform admin feature itself (`platform_admins`,
-  `admin-manage-users`, suspend/unsuspend/grant/revoke). This spec is
-  additive on top of it, reusing `inviteUser` as-is.
+- Changing how suspend/unsuspend/grant/revoke themselves work, or the
+  `platform_admins` table/RLS. This spec is additive on top of the platform
+  admin feature — it adds one new `admin-manage-users` action (`delete_user`)
+  and reuses `inviteUser`/`suspendUser`/`unsuspendUser` exactly as shipped.
+- Any "undo" for delete, or a soft-delete/archive state. Deleting a user is
+  exactly what it sounds like — `admin.auth.admin.deleteUser()`, no
+  in-between state. The only safety net is a confirmation prompt before it
+  happens (see Delete user section) and the database's own existing
+  `on delete restrict` on `households.created_by` (see Current state),
+  neither of which is new to this spec.
+- Reassigning a household's ownership, or any UI for resolving "this user
+  created a household and can't be deleted." The admin sees a clear error
+  explaining why and has to resolve it themselves outside this feature
+  (e.g. by deleting the household, or via a future household-transfer
+  feature this spec does not build).
 
 ## Current state (for reference)
 
@@ -73,6 +98,26 @@ approval flow built on top of the invite mechanism already shipped.
   does today — no changes needed to this page either.
 - `is_platform_admin()` (SQL function, `security definer`): the existing
   RLS building block this spec's admin-only policies reuse directly.
+- `households.created_by uuid not null references auth.users(id) on
+  delete restrict` (`20260913000001_initial_schema.sql`). This is the one
+  existing constraint that makes Delete user non-trivial: Postgres will
+  refuse to delete an `auth.users` row while any household still names
+  that user as `created_by`, failing the whole delete with a foreign-key
+  violation rather than silently orphaning or cascading away that
+  household's data. `household_members.user_id` and `platform_admins.user_id`
+  are both `on delete cascade` by contrast — deleting a user who is a plain
+  household member, or an admin, removes those rows automatically (and for
+  `platform_admins`, still runs into `prevent_removing_last_admin`'s
+  `before delete` trigger exactly as it would for an explicit demote, since
+  a cascade delete fires the referencing table's own triggers the same way
+  a direct delete does).
+- `admin-manage-users`'s existing `suspend_user`/`unsuspend_user` actions
+  already share a `targetUserId === callerId` self-target guard
+  (`index.ts`, confirmed in this feature's final review) — `delete_user`
+  needs the identical guard, new code but not a new pattern.
+- `apps/web/src/app/admin/users/page.tsx`'s existing `isSelf` check (used
+  today to disable "Remove admin" on the signed-in admin's own row) is the
+  direct precedent for disabling that same row's new selection checkbox.
 
 ## Data model changes
 
@@ -238,6 +283,103 @@ time-sensitive of the two concerns on this page). Structure:
   each with its own checkbox, and the bulk toolbar sits above the card
   list rather than as a table header row.
 
+## Delete user (new `admin-manage-users` action)
+
+A new action in the existing Edge Function, `supabase/functions/admin-manage-users/index.ts`,
+following the exact shape of `suspend_user`/`unsuspend_user`:
+
+```ts
+if (action === 'delete_user') {
+  const targetUserId = body.targetUserId;
+  if (!targetUserId) {
+    return jsonResponse({ status: 'error', message: 'targetUserId is required' }, 400);
+  }
+  if (targetUserId === callerId) {
+    return jsonResponse({ status: 'error', message: 'Cannot delete your own account' }, 400);
+  }
+  const { error } = await admin.auth.admin.deleteUser(targetUserId);
+  if (error) {
+    // households.created_by is `on delete restrict` — deleting a user who
+    // created a household fails at the database level. Translate that into
+    // something an admin can act on instead of a raw constraint-violation
+    // message. The exact wording Supabase's Admin API surfaces for this case
+    // needs confirming against the real error during Task 6-style live
+    // verification (see Testing) — match broadly (constraint name OR the
+    // word "household") so the translation still fires even if the exact
+    // phrasing differs from what's guessed here.
+    const isHouseholdRestrictViolation = /household/i.test(error.message) || /foreign key/i.test(error.message);
+    const message = isHouseholdRestrictViolation
+      ? "This user created a household and can't be deleted while it still exists — delete that household first, or reassign it, then try again."
+      : error.message;
+    return jsonResponse({ status: 'error', message }, 400);
+  }
+  return jsonResponse({ status: 'ok' });
+}
+```
+
+`packages/supabase-client/src/platformAdmin.ts` gets one new export,
+reusing the already-fixed `invokeAdminFn` helper (no new error-handling
+code needed client-side — Finding 1's fix from the platform admin
+feature's final review already made real server messages surface
+correctly through every action, this one included):
+
+```ts
+export async function deleteUser(client: SupabaseClient<Database>, targetUserId: string): Promise<void> {
+  await invokeAdminFn(client, { action: 'delete_user', targetUserId });
+}
+```
+
+## Bulk actions for the existing user table
+
+`apps/web/src/app/admin/users/page.tsx`'s user table (both the desktop
+`<table>` and the mobile stacked-card branch) gets the same
+checkbox-selection + bulk-toolbar pattern already designed above for the
+applications queue:
+
+- A `Set<string>` of selected user ids. A checkbox per row, plus a header
+  checkbox that selects/clears every currently-listed user *except* the
+  signed-in admin's own row — that row's checkbox is disabled outright
+  (same `isSelf` check the page already uses to disable "Remove admin" on
+  that row), so the admin can never select themselves into a bulk suspend
+  or bulk delete in the first place. This is a UI-level convenience on top
+  of the Edge Function's own self-target guards (both existing, for
+  suspend/unsuspend, and new, for delete) — the guards are the actual
+  enforcement; the disabled checkbox just means a self-targeted error
+  never has a reason to appear.
+- A toolbar that appears once the selection is non-empty: "Suspend
+  selected (N)", "Unsuspend selected (N)", "Delete selected (N)". All
+  three act on the current selection regardless of each user's individual
+  current state — "Suspend selected" calls `suspendUser` for every
+  selected id even if some are already suspended (a no-op success for
+  those, since re-applying the same ban state is idempotent), rather than
+  the toolbar trying to compute a mixed "some suspend, some unsuspend"
+  split. This keeps the bulk action predictable — the button always does
+  exactly what it says for the whole selection — instead of context-
+  sensitive per-item behavior that's harder to reason about from the UI
+  alone.
+- Suspend/unsuspend follow the same per-item-isolated-loop-then-single-
+  refresh pattern as the applications queue's bulk approve/reject: one
+  user's failure doesn't block the rest of the batch, and the selection is
+  cleared after the batch completes (whether every item succeeded or not)
+  since some of the selected rows may no longer be in their prior state
+  after the refresh.
+- **Delete selected** additionally requires a confirmation before it runs
+  anything, since unlike suspend it has no undo:
+  `window.confirm(`Delete ${n} user${n === 1 ? '' : 's'}? This cannot be
+  undone.`)` — declining leaves the selection untouched and calls nothing.
+  On confirm, the same per-item-isolated loop calls `deleteUser` for each
+  selected id; a user who can't be deleted (e.g. they created a household)
+  is left in the list with an inline error rather than silently skipped,
+  so the admin knows exactly which ones need manual attention.
+- The existing per-row actions gain a "Delete" button alongside
+  Suspend/Unsuspend and Make-admin/Remove-admin, with the identical
+  `window.confirm(...)` gate for a single user (`Delete ${email}? This
+  cannot be undone.`) before calling `deleteUser` + a single refresh.
+  Deleting one user this way and deleting one user via a one-item bulk
+  selection behave identically — same guard, same call, same isolation —
+  there is no separate code path for "single" vs. "bulk" beyond the
+  confirmation copy pluralization.
+
 ## Submission flow: `/admin/apply` replaces sign-up on the login page
 
 `apps/web/src/app/login/page.tsx`'s `Mode` type changes from `'sign-in' |
@@ -282,7 +424,14 @@ The `apply` mode:
   full-form-replacement confirmation described above.
 - The admin page's bulk approve/reject loops isolate per-item failures
   (described above) rather than using `Promise.all` unguarded, which would
-  let one rejection abort visibility into which others succeeded.
+  let one rejection abort visibility into which others succeeded. The same
+  applies to the user table's bulk suspend/unsuspend/delete loops.
+- `delete_user`'s households-restrict-violation translation (see Delete
+  user section) is the one place in this feature that inspects an error's
+  *message text* to decide what to show, rather than just passing a server
+  message straight through — flagged explicitly there as needing
+  confirmation against the real error text Supabase's Admin API returns,
+  not just the guessed pattern in the spec.
 
 ## Testing
 
@@ -304,3 +453,17 @@ The `apply` mode:
   the pending list and `inviteUser` was called for each (verifiable via
   each application's `status` flipping to `approved` and `reviewed_by`
   being set); separately verify a single reject via a per-row action.
+- Live Playwright check for the user table's new actions: seed a few
+  throwaway test users, confirm the signed-in admin's own row has no
+  usable checkbox, select two of the throwaway users and bulk-suspend,
+  confirm both flip to "Suspended"; bulk-unsuspend the same two, confirm
+  they flip back; select one and delete it (declining the confirm first to
+  verify nothing happens, then accepting), confirm it disappears from the
+  list. **Specifically and separately**: create a throwaway user, have
+  them create a household (so they're a real `households.created_by`),
+  attempt to delete that user via the admin panel, and confirm a clear
+  "this user created a household" message appears rather than a raw
+  database error — this is the one behavior in this spec that can't be
+  fully trusted from a code read alone and needs a real database round
+  trip to confirm the actual error text/shape matches what the
+  translation logic expects.
