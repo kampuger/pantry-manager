@@ -39,11 +39,13 @@ const EMPTY_VALUES: ItemFormInitialValues = {
 };
 
 export function ItemForm({
+  mode,
   initialValues = EMPTY_VALUES,
   submitLabel,
   onSubmit,
   onCancel,
 }: {
+  mode: 'add' | 'edit';
   initialValues?: ItemFormInitialValues;
   submitLabel: string;
   onSubmit: (values: ItemFormValues) => Promise<void>;
@@ -62,9 +64,7 @@ export function ItemForm({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // `onCancel` is only wired up by the edit-mode caller; the add form has no
-  // Cancel button. It is the component's only add-vs-edit signal.
-  const isEditMode = onCancel != null;
+  const isEditMode = mode === 'edit';
 
   function resetFields() {
     setName(initialValues.name);

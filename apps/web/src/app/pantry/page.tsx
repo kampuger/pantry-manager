@@ -1,8 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { getFreshnessFlag, resolveNotifyThreshold, type HouseholdNotifyDefaults } from '@pantry/core';
-import { daysUntil, groupItemsByLocation } from '@pantry/ui';
+import { daysUntil, getExpiryBadgeStatus, groupItemsByLocation } from '@pantry/ui';
 import {
   addPantryItem,
   updatePantryItem,
@@ -19,7 +20,7 @@ import { CreateHouseholdPrompt } from '@/components/CreateHouseholdPrompt';
 import { ItemForm, type ItemFormValues } from '@/components/pantry/ItemForm';
 import { PantryLocationGroup } from '@/components/pantry/PantryLocationGroup';
 import { NotificationPrefsModal } from '@/components/pantry/NotificationPrefsModal';
-import { color, radius, cardStyle, buttonStyle, badgeStyle } from '@/lib/theme';
+import { color, radius, cardStyle, inputStyle, buttonStyle, badgeStyle } from '@/lib/theme';
 
 type PantryItemRow = Database['public']['Tables']['pantry_items']['Row'];
 
@@ -29,6 +30,18 @@ const LOCATION_META: Record<string, { icon: string; label: string }> = {
   PANTRY: { icon: '🥫', label: 'Pantry' },
   COUNTER: { icon: '🍽️', label: 'Counter' },
   OTHER: { icon: '📦', label: 'Other' },
+};
+
+const MODAL_OVERLAY_STYLE: React.CSSProperties = {
+  position: 'fixed',
+  inset: 0,
+  background: 'rgba(15, 23, 42, 0.4)',
+  display: 'flex',
+  alignItems: 'flex-start',
+  justifyContent: 'center',
+  padding: '40px 16px',
+  overflowY: 'auto',
+  zIndex: 50,
 };
 
 function ItemCard({ children }: { children: React.ReactNode }) {
@@ -62,12 +75,32 @@ function DemoPantryList() {
 }
 
 export default function PantryPage() {
+  return (
+    <Suspense fallback={null}>
+      <PantryPageContent />
+    </Suspense>
+  );
+}
+
+function PantryPageContent() {
   const { session, loading: authLoading } = useAuth();
   const { membership, create } = useHousehold();
+  const searchParams = useSearchParams();
   const [items, setItems] = useState<PantryItemRow[]>([]);
   const [editingItem, setEditingItem] = useState<PantryItemRow | null>(null);
+  const [showAddForm, setShowAddForm] = useState(false);
   const [showPrefs, setShowPrefs] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showExpiringOnly, setShowExpiringOnly] = useState(searchParams.get('filter') === 'expiring');
   const [pageError, setPageError] = useState<string | null>(null);
+
+  // Re-syncs from the URL whenever it changes — not just on mount. The
+  // notification bell's "View all expiring items" link navigates to this
+  // same route with a new query string, which Next.js does not remount for,
+  // so a useState initializer alone would miss it.
+  useEffect(() => {
+    setShowExpiringOnly(searchParams.get('filter') === 'expiring');
+  }, [searchParams]);
   // Seeded with the households table's own defaults so the first paint
   // (before the fetch below resolves) already matches what a fresh
   // household would have — avoids a flash of an arbitrary threshold.
@@ -137,6 +170,7 @@ export default function PantryPage() {
       expirationDate: values.expirationDate,
       notifyDaysBeforeExpiry: values.notifyDaysOverride,
     });
+    setShowAddForm(false);
     await refreshItems(membership.householdId);
   }
 
@@ -176,8 +210,22 @@ export default function PantryPage() {
     }
   }
 
+  const trimmedQuery = searchQuery.trim().toLowerCase();
+  const visibleItems = items.filter((item) => {
+    if (trimmedQuery && !item.name.toLowerCase().includes(trimmedQuery)) return false;
+    if (showExpiringOnly) {
+      const threshold = resolveNotifyThreshold(
+        { isProduce: item.is_produce, notifyDaysBeforeExpiry: item.notify_days_before_expiry },
+        notifyPrefs
+      );
+      const status = getExpiryBadgeStatus(daysUntil(item.expiration_date), threshold);
+      if (status !== 'warning' && status !== 'expired') return false;
+    }
+    return true;
+  });
+
   const groups = groupItemsByLocation(
-    items.map((item) => ({
+    visibleItems.map((item) => ({
       id: item.id,
       storageLocation: item.storage_location,
       daysUntilExpiry: daysUntil(item.expiration_date),
@@ -202,27 +250,53 @@ export default function PantryPage() {
       >
         <h1 style={{ fontSize: 28, margin: 0, letterSpacing: '-0.02em' }}>Pantry Inventory</h1>
         {membership && membership !== 'loading' && (
-          <button
-            onClick={() => setShowPrefs(true)}
-            style={{
-              ...buttonStyle('secondary'),
-              padding: '8px 14px',
-              borderRadius: radius.pill,
-              color: color.mutedForeground,
-              whiteSpace: 'nowrap',
-            }}
-            aria-label="Notification preferences"
-          >
-            ⚙️ Notifications
-          </button>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button
+              onClick={() => setShowPrefs(true)}
+              style={{
+                ...buttonStyle('secondary'),
+                padding: '8px 14px',
+                borderRadius: radius.pill,
+                color: color.mutedForeground,
+                whiteSpace: 'nowrap',
+              }}
+              aria-label="Notification preferences"
+            >
+              ⚙️ Notifications
+            </button>
+            <button
+              onClick={() => setShowAddForm(true)}
+              style={{ ...buttonStyle('primary'), padding: '8px 16px', borderRadius: radius.pill, whiteSpace: 'nowrap' }}
+            >
+              + Add item
+            </button>
+          </div>
         )}
       </div>
       {membership === 'loading' && <p style={{ marginTop: 20, color: color.mutedForeground }}>Loading…</p>}
       {membership === null && <CreateHouseholdPrompt onCreate={create} />}
       {membership && membership !== 'loading' && (
         <>
-          <div style={{ marginTop: 24 }}>
-            <ItemForm submitLabel="Add item" onSubmit={handleAdd} />
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 20 }}>
+            <input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search items…"
+              aria-label="Search pantry items"
+              style={{ ...inputStyle, flex: '1 1 220px' }}
+            />
+            <button
+              onClick={() => setShowExpiringOnly((v) => !v)}
+              aria-pressed={showExpiringOnly}
+              style={{
+                ...buttonStyle(showExpiringOnly ? 'primary' : 'secondary'),
+                padding: '8px 16px',
+                borderRadius: radius.pill,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              ⚠️ Expiring soon
+            </button>
           </div>
           {pageError && (
             <p
@@ -260,35 +334,55 @@ export default function PantryPage() {
               No pantry items yet.
             </p>
           )}
+          {!pageError && items.length > 0 && visibleItems.length === 0 && (
+            <p
+              style={{
+                ...cardStyle,
+                borderStyle: 'dashed',
+                boxShadow: 'none',
+                background: color.muted,
+                marginTop: 24,
+                marginBottom: 0,
+                padding: '24px 16px',
+                textAlign: 'center',
+                color: color.mutedForeground,
+                fontSize: 14,
+              }}
+            >
+              No items match{trimmedQuery ? ` "${searchQuery.trim()}"` : ''}
+              {showExpiringOnly ? ' and are expiring soon' : ''}.
+            </p>
+          )}
           {groups.map((group) => (
             <PantryLocationGroup
               key={group.location}
               icon={LOCATION_META[group.location].icon}
               label={LOCATION_META[group.location].label}
               expiringSoonCount={group.expiringSoonCount}
-              items={items.filter((item) => group.itemIds.includes(item.id))}
+              items={visibleItems.filter((item) => group.itemIds.includes(item.id))}
               notifyPrefs={notifyPrefs}
               onEdit={setEditingItem}
               onConsumed={(item) => handleArchive(item, 'CONSUMED')}
               onExpired={(item) => handleArchive(item, 'SPOILED_DISCARDED')}
             />
           ))}
-          {editingItem && (
-            <div
-              style={{
-                position: 'fixed',
-                inset: 0,
-                background: 'rgba(15, 23, 42, 0.4)',
-                display: 'flex',
-                alignItems: 'flex-start',
-                justifyContent: 'center',
-                padding: '40px 16px',
-                overflowY: 'auto',
-                zIndex: 50,
-              }}
-            >
+          {showAddForm && (
+            <div style={MODAL_OVERLAY_STYLE}>
               <div style={{ maxWidth: 640, width: '100%' }}>
                 <ItemForm
+                  mode="add"
+                  submitLabel="Add item"
+                  onCancel={() => setShowAddForm(false)}
+                  onSubmit={handleAdd}
+                />
+              </div>
+            </div>
+          )}
+          {editingItem && (
+            <div style={MODAL_OVERLAY_STYLE}>
+              <div style={{ maxWidth: 640, width: '100%' }}>
+                <ItemForm
+                  mode="edit"
                   submitLabel="Save changes"
                   onCancel={() => setEditingItem(null)}
                   initialValues={{
