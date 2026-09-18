@@ -140,26 +140,34 @@ Deno.serve(async (req) => {
     if (targetUserId === callerId) {
       return jsonResponse({ status: 'error', message: 'Cannot delete your own account' }, 400);
     }
+    // households.created_by is `on delete restrict`, so deleting a user who
+    // created a household fails at the database level. Live testing showed
+    // Supabase's own delete-user error for this is an opaque "Database error
+    // deleting user" with no distinguishing detail — matching against that
+    // message text is not reliable. Checking proactively instead lets us
+    // give a specific, actionable message before even attempting the delete.
+    const { data: ownedHouseholds, error: householdsError } = await admin
+      .from('households')
+      .select('id')
+      .eq('created_by', targetUserId)
+      .limit(1);
+    if (householdsError) {
+      return jsonResponse({ status: 'error', message: householdsError.message }, 500);
+    }
+    if (ownedHouseholds && ownedHouseholds.length > 0) {
+      return jsonResponse(
+        {
+          status: 'error',
+          message:
+            "This user created a household and can't be deleted while it still exists — delete that household first, or reassign it, then try again.",
+        },
+        400
+      );
+    }
+
     const { error } = await admin.auth.admin.deleteUser(targetUserId);
     if (error) {
-      // households.created_by is `on delete restrict` — deleting a user who
-      // created a household fails at the database level. Translate that
-      // into something an admin can act on instead of a raw
-      // constraint-violation message. Match on the word "household" so the
-      // translation still fires even if Supabase's exact phrasing differs
-      // from what's guessed here — Task 7's live verification confirms the
-      // real text. Any other foreign-key-shaped violation (e.g. from an
-      // unrelated constraint) gets a neutral fallback instead of the
-      // households-specific copy, so we don't send the admin to fix the
-      // wrong thing.
-      const isHouseholdRestrictViolation = /household/i.test(error.message);
-      const isGenericForeignKeyViolation = !isHouseholdRestrictViolation && /foreign key/i.test(error.message);
-      const message = isHouseholdRestrictViolation
-        ? "This user created a household and can't be deleted while it still exists — delete that household first, or reassign it, then try again."
-        : isGenericForeignKeyViolation
-          ? 'This user is still referenced by existing records and cannot be deleted yet.'
-          : error.message;
-      return jsonResponse({ status: 'error', message }, 400);
+      return jsonResponse({ status: 'error', message: error.message }, 400);
     }
     return jsonResponse({ status: 'ok' });
   }
