@@ -39,9 +39,40 @@ function formatJoined(dateStr: string): string {
 // One consistent size for every inline row action (Suspend, Make/Remove
 // admin, Household, Delete, Delete household and retry) — buttonStyle()'s
 // own default padding/fontSize is sized for standalone CTAs (Approve,
-// Send invite), too large once 3-4 of these sit in a single row.
-function rowActionButtonStyle(variant: 'primary' | 'secondary' | 'ghost' | 'danger' = 'secondary') {
-  return { ...buttonStyle(variant), padding: '6px 12px', fontSize: 13 };
+// Send invite), too large once 3-4 of these sit in a single row. A fixed
+// `width` (see ROW_ACTION_WIDTH below) gives each action its own slot so
+// e.g. "Remove admin" being wider than "Make admin" can't push the
+// buttons after it sideways on that one row — every row's Delete button
+// then sits at the exact same x position.
+function rowActionButtonStyle(variant: 'primary' | 'secondary' | 'ghost' | 'danger' = 'secondary', width?: number) {
+  return {
+    ...buttonStyle(variant),
+    padding: '6px 12px',
+    fontSize: 13,
+    whiteSpace: 'nowrap' as const,
+    ...(width ? { width, textAlign: 'center' as const } : {}),
+  };
+}
+
+const ROW_ACTION_WIDTH = { suspend: 92, admin: 124, household: 96, delete: 74 };
+
+function AdminIcon() {
+  return (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={{ flexShrink: 0, color: color.accent }}
+    >
+      <title>Platform admin</title>
+      <path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z" />
+    </svg>
+  );
 }
 
 // Matches the ellipsis-truncate treatment the Message column already uses —
@@ -616,11 +647,13 @@ export default function AdminUsersPage() {
                     onChange={() => toggleUserSelected(user.id)}
                     style={{ marginTop: 3 }}
                   />
-                  <div style={{ display: 'grid', gap: 8, flex: 1 }}>
-                    <div style={{ fontWeight: 600, fontSize: 14, wordBreak: 'break-all' }}>{user.email ?? '(no email)'}</div>
+                  <div style={{ display: 'grid', gap: 8, flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                      {user.isAdmin && <AdminIcon />}
+                      <span style={{ fontWeight: 600, fontSize: 14, wordBreak: 'break-all' }}>{user.email ?? '(no email)'}</span>
+                    </div>
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                       <span style={badgeStyle(suspended ? 'destructive' : 'success')}>{suspended ? 'Suspended' : 'Active'}</span>
-                      {user.isAdmin && <span style={badgeStyle('muted')}>Admin</span>}
                     </div>
                     <div style={{ fontSize: 12, color: color.mutedForeground }}>Joined {formatJoined(user.createdAt)}</div>
                   </div>
@@ -640,25 +673,32 @@ export default function AdminUsersPage() {
                   </>
                 )}
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  <button onClick={() => handleToggleSuspend(user)} disabled={busyUserId === user.id} style={rowActionButtonStyle('secondary')}>
+                  <button
+                    onClick={() => handleToggleSuspend(user)}
+                    disabled={busyUserId === user.id}
+                    style={rowActionButtonStyle('secondary', ROW_ACTION_WIDTH.suspend)}
+                  >
                     {suspended ? 'Unsuspend' : 'Suspend'}
                   </button>
                   <button
                     onClick={() => handleToggleAdmin(user)}
                     disabled={busyUserId === user.id || isSelf}
                     title={isSelf ? "You can't remove your own admin access from here" : undefined}
-                    style={rowActionButtonStyle('ghost')}
+                    style={rowActionButtonStyle('ghost', ROW_ACTION_WIDTH.admin)}
                   >
                     {user.isAdmin ? 'Remove admin' : 'Make admin'}
                   </button>
-                  <button onClick={() => handleToggleHousehold(user)} style={rowActionButtonStyle('ghost')}>
+                  <button
+                    onClick={() => handleToggleHousehold(user)}
+                    style={rowActionButtonStyle('ghost', ROW_ACTION_WIDTH.household)}
+                  >
                     Household
                   </button>
                   <button
                     onClick={() => handleDeleteSingle(user)}
                     disabled={bulkUserBusy || isSelf}
                     title={isSelf ? "You can't delete your own account" : undefined}
-                    style={rowActionButtonStyle('danger')}
+                    style={rowActionButtonStyle('danger', ROW_ACTION_WIDTH.delete)}
                   >
                     Delete
                   </button>
@@ -680,7 +720,6 @@ export default function AdminUsersPage() {
                 </th>
                 <th style={{ padding: '8px 10px', color: color.mutedForeground, fontWeight: 600 }}>Email</th>
                 <th style={{ padding: '8px 10px', color: color.mutedForeground, fontWeight: 600 }}>Status</th>
-                <th style={{ padding: '8px 10px', color: color.mutedForeground, fontWeight: 600 }}>Admin</th>
                 <th style={{ padding: '8px 10px', color: color.mutedForeground, fontWeight: 600, whiteSpace: 'nowrap' }}>Joined</th>
                 <th style={{ padding: '8px 10px', color: color.mutedForeground, fontWeight: 600 }} />
               </tr>
@@ -700,34 +739,45 @@ export default function AdminUsersPage() {
                         onChange={() => toggleUserSelected(user.id)}
                       />
                     </td>
-                    <td style={{ padding: '10px', maxWidth: 220 }}>{truncatedCell(user.email ?? '(no email)')}</td>
+                    <td style={{ padding: '10px', maxWidth: 220 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                        {user.isAdmin && <AdminIcon />}
+                        {truncatedCell(user.email ?? '(no email)')}
+                      </div>
+                    </td>
                     <td style={{ padding: '10px' }}>
                       <span style={badgeStyle(suspended ? 'destructive' : 'success')}>{suspended ? 'Suspended' : 'Active'}</span>
                     </td>
-                    <td style={{ padding: '10px' }}>{user.isAdmin && <span style={badgeStyle('muted')}>Admin</span>}</td>
                     <td style={{ padding: '10px', color: color.mutedForeground, whiteSpace: 'nowrap' }}>{formatJoined(user.createdAt)}</td>
                     <td style={{ padding: '10px' }}>
                       <div style={{ display: 'grid', gap: 4 }}>
-                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                          <button onClick={() => handleToggleSuspend(user)} disabled={busyUserId === user.id} style={rowActionButtonStyle('secondary')}>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <button
+                            onClick={() => handleToggleSuspend(user)}
+                            disabled={busyUserId === user.id}
+                            style={rowActionButtonStyle('secondary', ROW_ACTION_WIDTH.suspend)}
+                          >
                             {suspended ? 'Unsuspend' : 'Suspend'}
                           </button>
                           <button
                             onClick={() => handleToggleAdmin(user)}
                             disabled={busyUserId === user.id || isSelf}
                             title={isSelf ? "You can't remove your own admin access from here" : undefined}
-                            style={rowActionButtonStyle('ghost')}
+                            style={rowActionButtonStyle('ghost', ROW_ACTION_WIDTH.admin)}
                           >
                             {user.isAdmin ? 'Remove admin' : 'Make admin'}
                           </button>
-                          <button onClick={() => handleToggleHousehold(user)} style={rowActionButtonStyle('ghost')}>
+                          <button
+                            onClick={() => handleToggleHousehold(user)}
+                            style={rowActionButtonStyle('ghost', ROW_ACTION_WIDTH.household)}
+                          >
                             Household
                           </button>
                           <button
                             onClick={() => handleDeleteSingle(user)}
                             disabled={bulkUserBusy || isSelf}
                             title={isSelf ? "You can't delete your own account" : undefined}
-                            style={rowActionButtonStyle('danger')}
+                            style={rowActionButtonStyle('danger', ROW_ACTION_WIDTH.delete)}
                           >
                             Delete
                           </button>
