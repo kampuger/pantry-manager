@@ -76,6 +76,10 @@ export async function unsuspendUser(client: SupabaseClient<Database>, targetUser
   await invokeAdminFn(client, { action: 'unsuspend_user', targetUserId });
 }
 
+export async function deleteUser(client: SupabaseClient<Database>, targetUserId: string): Promise<void> {
+  await invokeAdminFn(client, { action: 'delete_user', targetUserId });
+}
+
 /**
  * Unlike suspend/invite/list, granting or revoking admin needs no Auth
  * Admin API access — it's a plain write to `platform_admins`, gated by

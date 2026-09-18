@@ -4,6 +4,7 @@ import {
   inviteUser,
   suspendUser,
   unsuspendUser,
+  deleteUser,
   grantAdmin,
   revokeAdmin,
 } from './platformAdmin';
@@ -113,6 +114,35 @@ describe('suspendUser / unsuspendUser', () => {
     const invoke = jest.fn(async () => ({ data: null, error: new Error('cannot suspend your own account') }));
     const client = { functions: { invoke } } as unknown as SupabaseClient<Database>;
     await expect(suspendUser(client, 'self-id')).rejects.toThrow('cannot suspend your own account');
+  });
+});
+
+describe('deleteUser', () => {
+  it('invokes admin-manage-users with delete_user and the target id', async () => {
+    const invoke = jest.fn(async () => ({ data: { status: 'ok' }, error: null }));
+    const client = { functions: { invoke } } as unknown as SupabaseClient<Database>;
+
+    await deleteUser(client, 'user-2');
+    expect(invoke).toHaveBeenCalledWith('admin-manage-users', {
+      body: { action: 'delete_user', targetUserId: 'user-2' },
+    });
+  });
+
+  it('throws with the households-restrict-violation message when the function reports one', async () => {
+    const invoke = jest.fn(async () => ({
+      data: null,
+      error: new Error(
+        "This user created a household and can't be deleted while it still exists — delete that household first, or reassign it, then try again."
+      ),
+    }));
+    const client = { functions: { invoke } } as unknown as SupabaseClient<Database>;
+    await expect(deleteUser(client, 'user-3')).rejects.toThrow('household');
+  });
+
+  it('throws when the function call errors for any other reason', async () => {
+    const invoke = jest.fn(async () => ({ data: null, error: new Error('Cannot delete your own account') }));
+    const client = { functions: { invoke } } as unknown as SupabaseClient<Database>;
+    await expect(deleteUser(client, 'self-id')).rejects.toThrow('Cannot delete your own account');
   });
 });
 

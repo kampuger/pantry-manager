@@ -132,5 +132,31 @@ Deno.serve(async (req) => {
     return jsonResponse({ status: 'ok' });
   }
 
+  if (action === 'delete_user') {
+    const targetUserId = body.targetUserId;
+    if (!targetUserId) {
+      return jsonResponse({ status: 'error', message: 'targetUserId is required' }, 400);
+    }
+    if (targetUserId === callerId) {
+      return jsonResponse({ status: 'error', message: 'Cannot delete your own account' }, 400);
+    }
+    const { error } = await admin.auth.admin.deleteUser(targetUserId);
+    if (error) {
+      // households.created_by is `on delete restrict` — deleting a user who
+      // created a household fails at the database level. Translate that
+      // into something an admin can act on instead of a raw
+      // constraint-violation message. Match broadly (the word "household"
+      // OR "foreign key") so the translation still fires even if Supabase's
+      // exact phrasing differs from what's guessed here — Task 7's live
+      // verification confirms the real text.
+      const isHouseholdRestrictViolation = /household/i.test(error.message) || /foreign key/i.test(error.message);
+      const message = isHouseholdRestrictViolation
+        ? "This user created a household and can't be deleted while it still exists — delete that household first, or reassign it, then try again."
+        : error.message;
+      return jsonResponse({ status: 'error', message }, 400);
+    }
+    return jsonResponse({ status: 'ok' });
+  }
+
   return jsonResponse({ status: 'error', message: `Unknown action: ${action}` }, 400);
 });
