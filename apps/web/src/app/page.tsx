@@ -4,12 +4,18 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { resolveNotifyThreshold, formatPHP, type HouseholdNotifyDefaults } from '@pantry/core';
 import { daysUntil, getExpiryBadgeStatus } from '@pantry/ui';
-import { getHouseholdNotificationPrefs, STORAGE_LOCATION_OPTIONS, type Database } from '@pantry/supabase-client';
+import {
+  getHouseholdNotificationPrefs,
+  createHouseholdInvite,
+  STORAGE_LOCATION_OPTIONS,
+  type Database,
+  type HouseholdInvite,
+} from '@pantry/supabase-client';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/lib/AuthProvider';
 import { useHousehold } from '@/lib/useHousehold';
 import { CreateHouseholdPrompt } from '@/components/CreateHouseholdPrompt';
-import { color, cardStyle, buttonStyle } from '@/lib/theme';
+import { color, radius, cardStyle, buttonStyle } from '@/lib/theme';
 
 type PantryItemRow = Database['public']['Tables']['pantry_items']['Row'];
 
@@ -34,6 +40,10 @@ function addUtcDays(base: Date, days: number): Date {
 
 function shortUtcDate(date: Date): string {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+}
+
+function formatInviteExpiry(dateStr: string): string {
+  return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function buildBucketLabels(granularity: Granularity, todayUtc: Date): string[] {
@@ -223,6 +233,11 @@ export default function DashboardPage() {
     notifyDaysNonproduce: 7,
   });
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [invite, setInvite] = useState<HouseholdInvite | null>(null);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const [generatingInvite, setGeneratingInvite] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (!membership || membership === 'loading') return;
@@ -243,12 +258,83 @@ export default function DashboardPage() {
     });
   }, [membership]);
 
+  const canInvite =
+    membership !== null && membership !== 'loading' && (membership.role === 'OWNER' || membership.role === 'ADMIN');
+
+  async function handleGenerateInvite() {
+    if (!session || membership === null || membership === 'loading') return;
+    setGeneratingInvite(true);
+    setInviteError(null);
+    setCopied(false);
+    try {
+      setInvite(await createHouseholdInvite(supabase, membership.householdId, session.user.id));
+    } catch (err) {
+      setInviteError(err instanceof Error ? err.message : 'Failed to generate invite code');
+    } finally {
+      setGeneratingInvite(false);
+    }
+  }
+
+  async function handleCopyInviteCode() {
+    if (!invite) return;
+    try {
+      await navigator.clipboard.writeText(invite.code);
+      setCopied(true);
+    } catch {
+      // Clipboard access can be denied by the browser — the code stays
+      // visible in the box below for the owner to select and copy by hand.
+    }
+  }
+
   const header = (
-    <header>
-      <p style={{ margin: 0, color: color.mutedForeground, fontSize: 13, textTransform: 'uppercase', letterSpacing: 1.2 }}>
-        Overview
-      </p>
-      <h1 style={{ margin: '6px 0 0' }}>Dashboard</h1>
+    <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
+      <div>
+        <p style={{ margin: 0, color: color.mutedForeground, fontSize: 13, textTransform: 'uppercase', letterSpacing: 1.2 }}>
+          Overview
+        </p>
+        <h1 style={{ margin: '6px 0 0' }}>Dashboard</h1>
+      </div>
+
+      {canInvite && (
+        <div style={{ display: 'grid', gap: 8, justifyItems: 'end' }}>
+          <button onClick={() => setInviteOpen((v) => !v)} style={buttonStyle('secondary')}>
+            Invite a member
+          </button>
+          {inviteOpen && (
+            <div style={{ ...cardStyle, padding: 16, display: 'grid', gap: 10, minWidth: 260 }}>
+              {inviteError && <p style={{ color: color.destructive, fontSize: 13, margin: 0 }}>{inviteError}</p>}
+              {invite ? (
+                <>
+                  <div
+                    style={{
+                      fontFamily: 'monospace',
+                      fontSize: 18,
+                      fontWeight: 700,
+                      letterSpacing: 2,
+                      padding: '8px 12px',
+                      borderRadius: radius.sm,
+                      background: color.muted,
+                      textAlign: 'center',
+                    }}
+                  >
+                    {invite.code}
+                  </div>
+                  <p style={{ margin: 0, fontSize: 12, color: color.mutedForeground, textAlign: 'center' }}>
+                    Expires {formatInviteExpiry(invite.expiresAt)}
+                  </p>
+                  <button onClick={handleCopyInviteCode} style={buttonStyle('secondary')}>
+                    {copied ? 'Copied!' : 'Copy code'}
+                  </button>
+                </>
+              ) : (
+                <button onClick={handleGenerateInvite} disabled={generatingInvite} style={buttonStyle('primary')}>
+                  {generatingInvite ? 'Generating…' : 'Generate code'}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </header>
   );
 
