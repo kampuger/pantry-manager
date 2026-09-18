@@ -15,7 +15,7 @@ create table access_applications (
   status text not null default 'pending' check (status in ('pending', 'approved', 'rejected')),
   submitted_at timestamptz not null default now(),
   reviewed_at timestamptz,
-  reviewed_by uuid references auth.users(id)
+  reviewed_by uuid references auth.users(id) on delete set null
 );
 
 -- Re-submitting the same email while a prior application is still pending

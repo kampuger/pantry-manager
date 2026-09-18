@@ -145,14 +145,20 @@ Deno.serve(async (req) => {
       // households.created_by is `on delete restrict` — deleting a user who
       // created a household fails at the database level. Translate that
       // into something an admin can act on instead of a raw
-      // constraint-violation message. Match broadly (the word "household"
-      // OR "foreign key") so the translation still fires even if Supabase's
-      // exact phrasing differs from what's guessed here — Task 7's live
-      // verification confirms the real text.
-      const isHouseholdRestrictViolation = /household/i.test(error.message) || /foreign key/i.test(error.message);
+      // constraint-violation message. Match on the word "household" so the
+      // translation still fires even if Supabase's exact phrasing differs
+      // from what's guessed here — Task 7's live verification confirms the
+      // real text. Any other foreign-key-shaped violation (e.g. from an
+      // unrelated constraint) gets a neutral fallback instead of the
+      // households-specific copy, so we don't send the admin to fix the
+      // wrong thing.
+      const isHouseholdRestrictViolation = /household/i.test(error.message);
+      const isGenericForeignKeyViolation = !isHouseholdRestrictViolation && /foreign key/i.test(error.message);
       const message = isHouseholdRestrictViolation
         ? "This user created a household and can't be deleted while it still exists — delete that household first, or reassign it, then try again."
-        : error.message;
+        : isGenericForeignKeyViolation
+          ? 'This user is still referenced by existing records and cannot be deleted yet.'
+          : error.message;
       return jsonResponse({ status: 'error', message }, 400);
     }
     return jsonResponse({ status: 'ok' });
