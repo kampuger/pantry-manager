@@ -251,11 +251,24 @@ export default function AdminUsersPage() {
     await runUserAction([...selectedUserIds], (id) => unsuspendUser(supabase, id));
   }
 
+  async function deleteUserCascadingHousehold(id: string) {
+    try {
+      await deleteUser(supabase, id);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '';
+      if (!message.includes('created a household')) throw err;
+      const household = await getHouseholdOwnedBy(supabase, id);
+      if (!household) throw err;
+      await deleteHousehold(supabase, household.id);
+      await deleteUser(supabase, id);
+    }
+  }
+
   async function handleBulkDelete() {
     const ids = [...selectedUserIds];
     const n = ids.length;
     if (!window.confirm(`Delete ${n} user${n === 1 ? '' : 's'}? This cannot be undone.`)) return;
-    await runUserAction(ids, (id) => deleteUser(supabase, id));
+    await runUserAction(ids, deleteUserCascadingHousehold);
   }
 
   async function handleDeleteSingle(user: AdminUserRow) {
