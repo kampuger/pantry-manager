@@ -120,6 +120,7 @@ export default function LoginPage() {
   const [submitHovered, setSubmitHovered] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [message, setMessage] = useState('');
+  const [inviteCode, setInviteCode] = useState('');
   const [applicationSubmitted, setApplicationSubmitted] = useState(false);
 
   useEffect(() => setMounted(true), []);
@@ -138,6 +139,7 @@ export default function LoginPage() {
     setStatusIsError(false);
     setApplicationSubmitted(false);
     setMessage('');
+    setInviteCode('');
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -156,7 +158,7 @@ export default function LoginPage() {
 
     if (mode === 'apply') {
       try {
-        await submitApplication(supabase, email.trim(), message);
+        await submitApplication(supabase, email.trim(), message, inviteCode);
         setApplicationSubmitted(true);
       } catch (err) {
         setStatusIsError(true);
@@ -439,6 +441,37 @@ export default function LoginPage() {
                       color: color.foreground,
                       outline: 'none',
                       resize: 'vertical',
+                    }}
+                  />
+                </div>
+              )}
+
+              {mode === 'apply' && (
+                <div>
+                  <label
+                    htmlFor="inviteCode"
+                    style={{ display: 'block', fontSize: 13, fontWeight: 600, color: color.mutedForeground, marginBottom: 6 }}
+                  >
+                    Household invite code (optional)
+                  </label>
+                  <input
+                    id="inviteCode"
+                    type="text"
+                    value={inviteCode}
+                    onChange={(e) => setInviteCode(e.target.value)}
+                    style={{
+                      width: '100%',
+                      boxSizing: 'border-box',
+                      padding: '13px 14px',
+                      borderRadius: radius.md,
+                      borderWidth: 1.5,
+                      borderStyle: 'solid',
+                      borderColor: color.border,
+                      fontFamily: 'inherit',
+                      fontSize: 14,
+                      background: color.card,
+                      color: color.foreground,
+                      outline: 'none',
                     }}
                   />
                 </div>
