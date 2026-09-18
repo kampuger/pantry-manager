@@ -54,6 +54,38 @@ export async function redeemHouseholdInvite(
   return { householdId: data, role: 'MEMBER' };
 }
 
+export async function getHouseholdById(
+  client: SupabaseClient<Database>,
+  householdId: string
+): Promise<{ id: string; name: string } | null> {
+  const { data, error } = await client
+    .from('households')
+    .select('id, name')
+    .eq('id', householdId)
+    .maybeSingle();
+  if (error) throw error;
+  return data ?? null;
+}
+
+export interface HouseholdMemberRow {
+  userId: string;
+  role: 'OWNER' | 'ADMIN' | 'MEMBER';
+  joinedAt: string;
+}
+
+export async function listHouseholdMembers(
+  client: SupabaseClient<Database>,
+  householdId: string
+): Promise<HouseholdMemberRow[]> {
+  const { data, error } = await client
+    .from('household_members')
+    .select('user_id, role, joined_at')
+    .eq('household_id', householdId)
+    .order('joined_at');
+  if (error) throw error;
+  return (data ?? []).map((row) => ({ userId: row.user_id, role: row.role, joinedAt: row.joined_at }));
+}
+
 export interface NotificationPreferences {
   notifyDaysProduce: number;
   notifyDaysNonproduce: number;

@@ -2,6 +2,8 @@ import {
   getMyHousehold,
   createHousehold,
   redeemHouseholdInvite,
+  getHouseholdById,
+  listHouseholdMembers,
   getHouseholdNotificationPrefs,
   updateHouseholdNotificationPrefs,
   getMemberNotificationsEnabled,
@@ -144,6 +146,78 @@ describe('redeemHouseholdInvite', () => {
     await expect(redeemHouseholdInvite(client, 'BADCODE1')).rejects.toThrow(
       'This invite code is invalid, expired, or already used.'
     );
+  });
+});
+
+describe('getHouseholdById', () => {
+  function fakeClient(result: { data: any; error: any }): SupabaseClient<Database> {
+    const from = (table: string): any => {
+      if (table !== 'households') throw new Error(`Unexpected table: ${table}`);
+      return { select: () => ({ eq: () => ({ maybeSingle: async () => result }) }) };
+    };
+    return { from } as unknown as SupabaseClient<Database>;
+  }
+
+  it('returns the household when found', async () => {
+    const client = fakeClient({ data: { id: 'house-1', name: 'The Santos Family' }, error: null });
+    expect(await getHouseholdById(client, 'house-1')).toEqual({ id: 'house-1', name: 'The Santos Family' });
+  });
+
+  it('returns null when not found', async () => {
+    const client = fakeClient({ data: null, error: null });
+    expect(await getHouseholdById(client, 'missing')).toBeNull();
+  });
+
+  it('throws when the query errors', async () => {
+    const client = fakeClient({ data: null, error: new Error('boom') });
+    await expect(getHouseholdById(client, 'house-1')).rejects.toThrow('boom');
+  });
+});
+
+describe('listHouseholdMembers', () => {
+  function fakeClient(result: { data: any; error: any }) {
+    const state: any = {};
+    state.from = (table: string): any => {
+      if (table !== 'household_members') throw new Error(`Unexpected table: ${table}`);
+      return {
+        select: () => ({
+          eq: (...args: any[]) => {
+            state.lastEqArgs = args;
+            return {
+              order: (...orderArgs: any[]) => {
+                state.lastOrderArgs = orderArgs;
+                return Promise.resolve(result);
+              },
+            };
+          },
+        }),
+      };
+    };
+    return state as SupabaseClient<Database> & { lastEqArgs?: any[]; lastOrderArgs?: any[] };
+  }
+
+  it('returns members mapped to camelCase, ordered by joined_at', async () => {
+    const rows = [
+      { user_id: 'user-1', role: 'OWNER', joined_at: '2026-09-01T00:00:00.000Z' },
+      { user_id: 'user-2', role: 'MEMBER', joined_at: '2026-09-05T00:00:00.000Z' },
+    ];
+    const client = fakeClient({ data: rows, error: null });
+    expect(await listHouseholdMembers(client, 'house-1')).toEqual([
+      { userId: 'user-1', role: 'OWNER', joinedAt: '2026-09-01T00:00:00.000Z' },
+      { userId: 'user-2', role: 'MEMBER', joinedAt: '2026-09-05T00:00:00.000Z' },
+    ]);
+    expect(client.lastEqArgs).toEqual(['household_id', 'house-1']);
+    expect(client.lastOrderArgs).toEqual(['joined_at']);
+  });
+
+  it('returns an empty array when there is no data', async () => {
+    const client = fakeClient({ data: null, error: null });
+    expect(await listHouseholdMembers(client, 'house-1')).toEqual([]);
+  });
+
+  it('throws when the query errors', async () => {
+    const client = fakeClient({ data: null, error: new Error('boom') });
+    await expect(listHouseholdMembers(client, 'house-1')).rejects.toThrow('boom');
   });
 });
 

@@ -13,6 +13,9 @@ import {
   deleteUser,
   getHouseholdOwnedBy,
   deleteHousehold,
+  getMyHousehold,
+  getHouseholdById,
+  listHouseholdMembers,
   listPendingApplications,
   markApplicationApproved,
   markApplicationRejected,
@@ -55,6 +58,34 @@ function AlertBanner({ tone, children }: { tone: 'destructive' | 'success'; chil
   );
 }
 
+type HouseholdPanelState =
+  | { status: 'loading' }
+  | { status: 'none' }
+  | { status: 'error'; message: string }
+  | { status: 'loaded'; name: string; members: { userId: string; email: string; role: string }[] };
+
+function HouseholdPanel({ state }: { state: HouseholdPanelState }) {
+  if (state.status === 'loading') {
+    return <p style={{ color: color.mutedForeground, fontSize: 13, margin: 0 }}>Loading…</p>;
+  }
+  if (state.status === 'none') {
+    return <p style={{ color: color.mutedForeground, fontSize: 13, margin: 0 }}>No household.</p>;
+  }
+  if (state.status === 'error') {
+    return <p style={{ color: color.destructive, fontSize: 13, margin: 0 }}>{state.message}</p>;
+  }
+  return (
+    <div style={{ ...cardStyle, padding: 12, display: 'grid', gap: 6 }}>
+      <div style={{ fontWeight: 600, fontSize: 13 }}>{state.name}</div>
+      {state.members.map((member) => (
+        <div key={member.userId} style={{ fontSize: 13, color: color.mutedForeground, wordBreak: 'break-all' }}>
+          {member.email} — {member.role}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function AdminUsersPage() {
   const { session, loading: authLoading } = useAuth();
   const isMobile = useIsMobile();
@@ -77,6 +108,8 @@ export default function AdminUsersPage() {
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
   const [userRowErrors, setUserRowErrors] = useState<Record<string, string>>({});
   const [bulkUserBusy, setBulkUserBusy] = useState(false);
+  const [expandedHouseholdUserId, setExpandedHouseholdUserId] = useState<string | null>(null);
+  const [householdPanels, setHouseholdPanels] = useState<Record<string, HouseholdPanelState>>({});
 
   async function refreshUsers() {
     try {
@@ -154,6 +187,38 @@ export default function AdminUsersPage() {
       setActionError(err instanceof Error ? err.message : 'Action failed');
     } finally {
       setBusyUserId(null);
+    }
+  }
+
+  async function handleToggleHousehold(user: AdminUserRow) {
+    if (expandedHouseholdUserId === user.id) {
+      setExpandedHouseholdUserId(null);
+      return;
+    }
+    setExpandedHouseholdUserId(user.id);
+    setHouseholdPanels((prev) => ({ ...prev, [user.id]: { status: 'loading' } }));
+    try {
+      const membership = await getMyHousehold(supabase, user.id);
+      if (!membership) {
+        setHouseholdPanels((prev) => ({ ...prev, [user.id]: { status: 'none' } }));
+        return;
+      }
+      const household = await getHouseholdById(supabase, membership.householdId);
+      const members = await listHouseholdMembers(supabase, membership.householdId);
+      const emailById = new Map(users.map((u) => [u.id, u.email ?? u.id]));
+      setHouseholdPanels((prev) => ({
+        ...prev,
+        [user.id]: {
+          status: 'loaded',
+          name: household?.name ?? 'Household',
+          members: members.map((m) => ({ userId: m.userId, email: emailById.get(m.userId) ?? m.userId, role: m.role })),
+        },
+      }));
+    } catch (err) {
+      setHouseholdPanels((prev) => ({
+        ...prev,
+        [user.id]: { status: 'error', message: err instanceof Error ? err.message : 'Failed to load household' },
+      }));
     }
   }
 
@@ -564,6 +629,9 @@ export default function AdminUsersPage() {
                   >
                     {user.isAdmin ? 'Remove admin' : 'Make admin'}
                   </button>
+                  <button onClick={() => handleToggleHousehold(user)} style={buttonStyle('secondary')}>
+                    Household
+                  </button>
                   <button
                     onClick={() => handleDeleteSingle(user)}
                     disabled={bulkUserBusy || isSelf}
@@ -573,6 +641,9 @@ export default function AdminUsersPage() {
                     Delete
                   </button>
                 </div>
+                {expandedHouseholdUserId === user.id && householdPanels[user.id] && (
+                  <HouseholdPanel state={householdPanels[user.id]} />
+                )}
               </div>
             );
           })}
@@ -627,6 +698,9 @@ export default function AdminUsersPage() {
                           >
                             {user.isAdmin ? 'Remove admin' : 'Make admin'}
                           </button>
+                          <button onClick={() => handleToggleHousehold(user)} style={buttonStyle('secondary')}>
+                            Household
+                          </button>
                           <button
                             onClick={() => handleDeleteSingle(user)}
                             disabled={bulkUserBusy || isSelf}
@@ -649,6 +723,9 @@ export default function AdminUsersPage() {
                               </button>
                             )}
                           </>
+                        )}
+                        {expandedHouseholdUserId === user.id && householdPanels[user.id] && (
+                          <HouseholdPanel state={householdPanels[user.id]} />
                         )}
                       </div>
                     </td>
