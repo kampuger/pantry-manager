@@ -3,9 +3,11 @@
 import { useEffect, useState, type CSSProperties } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/AuthProvider';
+import { supabase } from '@/lib/supabaseClient';
+import { submitApplication } from '@pantry/supabase-client';
 import { color, radius, shadow } from '@/lib/theme';
 
-type Mode = 'sign-in' | 'sign-up' | 'forgot-password';
+type Mode = 'sign-in' | 'apply' | 'forgot-password';
 
 function IconMail() {
   return (
@@ -104,7 +106,7 @@ const formPaneStyle: CSSProperties = {
 };
 
 export default function LoginPage() {
-  const { session, loading, signIn, signUp, resetPassword } = useAuth();
+  const { session, loading, signIn, resetPassword } = useAuth();
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -117,6 +119,8 @@ export default function LoginPage() {
   const [passwordFocused, setPasswordFocused] = useState(false);
   const [submitHovered, setSubmitHovered] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [message, setMessage] = useState('');
+  const [applicationSubmitted, setApplicationSubmitted] = useState(false);
 
   useEffect(() => setMounted(true), []);
 
@@ -132,6 +136,8 @@ export default function LoginPage() {
     setMode(next);
     setStatus(null);
     setStatusIsError(false);
+    setApplicationSubmitted(false);
+    setMessage('');
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -148,7 +154,20 @@ export default function LoginPage() {
       return;
     }
 
-    const result = mode === 'sign-in' ? await signIn(email, password) : await signUp(email, password);
+    if (mode === 'apply') {
+      try {
+        await submitApplication(supabase, email.trim(), message);
+        setApplicationSubmitted(true);
+      } catch (err) {
+        setStatusIsError(true);
+        setStatus(err instanceof Error ? err.message : 'Failed to submit application');
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
+
+    const result = await signIn(email, password);
     setSubmitting(false);
 
     if (result.error) {
@@ -157,22 +176,17 @@ export default function LoginPage() {
       return;
     }
 
-    if (mode === 'sign-up') {
-      setStatus('Account created. If email confirmation is enabled on this project, check your inbox before signing in.');
-      return;
-    }
-
     router.push('/');
   }
 
-  const heading = mode === 'sign-in' ? 'Welcome back' : mode === 'sign-up' ? 'Create your account' : 'Reset your password';
+  const heading = mode === 'sign-in' ? 'Welcome back' : mode === 'apply' ? 'Apply for access' : 'Reset your password';
   const subheading =
     mode === 'sign-in'
       ? "Sign in to see what's in your kitchen."
-      : mode === 'sign-up'
-        ? 'Set up your household in under a minute.'
+      : mode === 'apply'
+        ? "Tell us a bit about you — we'll review your request and get back to you."
         : "Enter your email and we'll send you a reset link.";
-  const submitLabel = mode === 'sign-in' ? 'Sign in' : mode === 'sign-up' ? 'Create account' : 'Send reset link';
+  const submitLabel = mode === 'sign-in' ? 'Sign in' : mode === 'apply' ? 'Submit application' : 'Send reset link';
 
   const fieldStyle = (focused: boolean): CSSProperties => ({
     width: '100%',
@@ -300,6 +314,22 @@ export default function LoginPage() {
             </h2>
             <p style={{ color: color.mutedForeground, marginTop: 6, fontSize: 14 }}>{subheading}</p>
 
+            {mode === 'apply' && applicationSubmitted ? (
+              <p
+                role="status"
+                style={{
+                  marginTop: 26,
+                  padding: '14px 16px',
+                  borderRadius: radius.sm,
+                  fontSize: 14,
+                  lineHeight: 1.6,
+                  background: color.successBg,
+                  color: color.success,
+                }}
+              >
+                Your application has been submitted. We&apos;ll review it and get in touch once you&apos;re approved.
+              </p>
+            ) : (
             <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 16, marginTop: 26 }}>
               <div>
                 <label
@@ -327,22 +357,20 @@ export default function LoginPage() {
                 </div>
               </div>
 
-              {mode !== 'forgot-password' && (
+              {mode === 'sign-in' && (
                 <div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
                     <label htmlFor="password" style={{ fontSize: 13, fontWeight: 600, color: color.mutedForeground }}>
                       Password
                     </label>
-                    {mode === 'sign-in' && (
-                      <button
-                        type="button"
-                        onClick={() => switchMode('forgot-password')}
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 12.5, fontWeight: 600, color: color.primary, fontFamily: 'inherit' }}
-                        suppressHydrationWarning
-                      >
-                        Forgot password?
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => switchMode('forgot-password')}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 12.5, fontWeight: 600, color: color.primary, fontFamily: 'inherit' }}
+                      suppressHydrationWarning
+                    >
+                      Forgot password?
+                    </button>
                   </div>
                   <div style={{ position: 'relative' }}>
                     <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: color.mutedForeground, pointerEvents: 'none' }}>
@@ -353,7 +381,7 @@ export default function LoginPage() {
                       type={showPassword ? 'text' : 'password'}
                       required
                       minLength={6}
-                      autoComplete={mode === 'sign-up' ? 'new-password' : 'current-password'}
+                      autoComplete="current-password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       onFocus={() => setPasswordFocused(true)}
@@ -381,6 +409,38 @@ export default function LoginPage() {
                       {showPassword ? <IconEyeOff /> : <IconEye />}
                     </button>
                   </div>
+                </div>
+              )}
+
+              {mode === 'apply' && (
+                <div>
+                  <label
+                    htmlFor="message"
+                    style={{ display: 'block', fontSize: 13, fontWeight: 600, color: color.mutedForeground, marginBottom: 6 }}
+                  >
+                    Anything you&apos;d like us to know? (optional)
+                  </label>
+                  <textarea
+                    id="message"
+                    rows={4}
+                    value={message}
+                    onChange={(e) => setMessage(e.target.value)}
+                    style={{
+                      width: '100%',
+                      boxSizing: 'border-box',
+                      padding: '13px 14px',
+                      borderRadius: radius.md,
+                      borderWidth: 1.5,
+                      borderStyle: 'solid',
+                      borderColor: color.border,
+                      fontFamily: 'inherit',
+                      fontSize: 14,
+                      background: color.card,
+                      color: color.foreground,
+                      outline: 'none',
+                      resize: 'vertical',
+                    }}
+                  />
                 </div>
               )}
 
@@ -428,6 +488,7 @@ export default function LoginPage() {
                 {submitting ? 'Please wait…' : submitLabel}
               </button>
             </form>
+            )}
 
             <div style={{ marginTop: 20, textAlign: 'center', fontSize: 13.5 }}>
               {mode === 'forgot-password' ? (
@@ -442,11 +503,11 @@ export default function LoginPage() {
                 <span style={{ color: color.mutedForeground }}>
                   {mode === 'sign-in' ? "Don't have an account? " : 'Already have an account? '}
                   <button
-                    onClick={() => switchMode(mode === 'sign-in' ? 'sign-up' : 'sign-in')}
+                    onClick={() => switchMode(mode === 'sign-in' ? 'apply' : 'sign-in')}
                     style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: 'inherit', fontWeight: 600, color: color.primary }}
                     suppressHydrationWarning
                   >
-                    {mode === 'sign-in' ? 'Sign up' : 'Sign in'}
+                    {mode === 'sign-in' ? 'Apply for access' : 'Sign in'}
                   </button>
                 </span>
               )}
