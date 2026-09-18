@@ -45,6 +45,15 @@ export async function createHousehold(
   return { householdId: household.id, role: 'OWNER' };
 }
 
+export async function redeemHouseholdInvite(
+  client: SupabaseClient<Database>,
+  code: string
+): Promise<HouseholdMembership> {
+  const { data, error } = await client.rpc('redeem_household_invite', { invite_code: code });
+  if (error) throw error;
+  return { householdId: data, role: 'MEMBER' };
+}
+
 export interface NotificationPreferences {
   notifyDaysProduce: number;
   notifyDaysNonproduce: number;

@@ -1,6 +1,7 @@
 import {
   getMyHousehold,
   createHousehold,
+  redeemHouseholdInvite,
   getHouseholdNotificationPrefs,
   updateHouseholdNotificationPrefs,
   getMemberNotificationsEnabled,
@@ -110,6 +111,32 @@ describe('createHousehold', () => {
     });
     await expect(createHousehold(client, 'user-1', 'My Household')).rejects.toThrow(
       'member insert failed'
+    );
+  });
+});
+
+describe('redeemHouseholdInvite', () => {
+  function fakeClient(result: { data: any; error: any }) {
+    const rpc = jest.fn(async () => result);
+    return { rpc } as unknown as SupabaseClient<Database> & { rpc: jest.Mock };
+  }
+
+  it('calls the redeem_household_invite RPC and returns a MEMBER membership', async () => {
+    const client = fakeClient({ data: 'house-9', error: null });
+    expect(await redeemHouseholdInvite(client, 'ABCD2345')).toEqual({
+      householdId: 'house-9',
+      role: 'MEMBER',
+    });
+    expect(client.rpc).toHaveBeenCalledWith('redeem_household_invite', { invite_code: 'ABCD2345' });
+  });
+
+  it('throws with the RPC error message on failure', async () => {
+    const client = fakeClient({
+      data: null,
+      error: new Error('This invite code is invalid, expired, or already used.'),
+    });
+    await expect(redeemHouseholdInvite(client, 'BADCODE1')).rejects.toThrow(
+      'This invite code is invalid, expired, or already used.'
     );
   });
 });
