@@ -98,3 +98,42 @@ export async function revokeAdmin(client: SupabaseClient<Database>, targetUserId
   const { error } = await client.from('platform_admins').delete().eq('user_id', targetUserId);
   if (error) throw error;
 }
+
+export interface HouseholdSummary {
+  id: string;
+  name: string;
+  memberCount: number;
+}
+
+/**
+ * Looks up the household a given user created, with its member count, for
+ * the admin confirmation dialog before deleting it. Returns null if the
+ * user doesn't currently own a household (e.g. it was already deleted by
+ * someone else in a race) — the caller treats that as "nothing to delete,
+ * just retry the user delete directly."
+ */
+export async function getHouseholdOwnedBy(
+  client: SupabaseClient<Database>,
+  userId: string
+): Promise<HouseholdSummary | null> {
+  const { data: household, error } = await client
+    .from('households')
+    .select('id, name')
+    .eq('created_by', userId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!household) return null;
+
+  const { count, error: countError } = await client
+    .from('household_members')
+    .select('id', { count: 'exact', head: true })
+    .eq('household_id', household.id);
+  if (countError) throw countError;
+
+  return { id: household.id, name: household.name, memberCount: count ?? 0 };
+}
+
+export async function deleteHousehold(client: SupabaseClient<Database>, householdId: string): Promise<void> {
+  const { error } = await client.from('households').delete().eq('id', householdId);
+  if (error) throw error;
+}

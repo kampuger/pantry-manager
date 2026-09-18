@@ -7,6 +7,8 @@ import {
   deleteUser,
   grantAdmin,
   revokeAdmin,
+  getHouseholdOwnedBy,
+  deleteHousehold,
 } from './platformAdmin';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from './types';
@@ -187,5 +189,115 @@ describe('grantAdmin / revokeAdmin', () => {
   it('revokeAdmin throws when the delete errors', async () => {
     const client = fakeClient({ deleteResult: { error: new Error('cannot remove the last remaining platform admin') } });
     await expect(revokeAdmin(client, 'user-2')).rejects.toThrow('cannot remove the last remaining platform admin');
+  });
+});
+
+describe('getHouseholdOwnedBy / deleteHousehold', () => {
+  function fakeClient(handlers: {
+    householdResult?: { data: any; error: any };
+    countResult?: { count: number | null; error: any };
+    deleteResult?: { error: any };
+  }) {
+    const state: any = {};
+    state.from = (table: string): any => {
+      if (table === 'households') {
+        return {
+          select: () => ({
+            eq: (...args: any[]) => {
+              state.lastHouseholdEqArgs = args;
+              return { maybeSingle: async () => handlers.householdResult };
+            },
+          }),
+          delete: () => ({
+            eq: (...args: any[]) => {
+              state.lastDeleteEqArgs = args;
+              return Promise.resolve(handlers.deleteResult);
+            },
+          }),
+        };
+      }
+      if (table === 'household_members') {
+        return {
+          select: (columns: string, options: any) => {
+            state.lastCountSelectColumns = columns;
+            state.lastCountOptions = options;
+            return {
+              eq: (...args: any[]) => {
+                state.lastCountEqArgs = args;
+                return Promise.resolve(handlers.countResult);
+              },
+            };
+          },
+        };
+      }
+      throw new Error(`Unexpected table: ${table}`);
+    };
+    return state as SupabaseClient<Database> & {
+      lastHouseholdEqArgs?: any[];
+      lastDeleteEqArgs?: any[];
+      lastCountSelectColumns?: any;
+      lastCountOptions?: any;
+      lastCountEqArgs?: any[];
+    };
+  }
+
+  describe('getHouseholdOwnedBy', () => {
+    it('returns the household with its member count when found', async () => {
+      const client = fakeClient({
+        householdResult: { data: { id: 'house-1', name: 'The Santos Family' }, error: null },
+        countResult: { count: 3, error: null },
+      });
+      expect(await getHouseholdOwnedBy(client, 'user-1')).toEqual({
+        id: 'house-1',
+        name: 'The Santos Family',
+        memberCount: 3,
+      });
+      expect(client.lastHouseholdEqArgs).toEqual(['created_by', 'user-1']);
+      expect(client.lastCountEqArgs).toEqual(['household_id', 'house-1']);
+      expect(client.lastCountOptions).toEqual({ count: 'exact', head: true });
+    });
+
+    it('returns null when the user owns no household', async () => {
+      const client = fakeClient({ householdResult: { data: null, error: null } });
+      expect(await getHouseholdOwnedBy(client, 'user-1')).toBeNull();
+    });
+
+    it('defaults memberCount to 0 when count is null', async () => {
+      const client = fakeClient({
+        householdResult: { data: { id: 'house-1', name: 'Empty House' }, error: null },
+        countResult: { count: null, error: null },
+      });
+      expect(await getHouseholdOwnedBy(client, 'user-1')).toEqual({
+        id: 'house-1',
+        name: 'Empty House',
+        memberCount: 0,
+      });
+    });
+
+    it('throws when the household query errors', async () => {
+      const client = fakeClient({ householdResult: { data: null, error: new Error('boom') } });
+      await expect(getHouseholdOwnedBy(client, 'user-1')).rejects.toThrow('boom');
+    });
+
+    it('throws when the member count query errors', async () => {
+      const client = fakeClient({
+        householdResult: { data: { id: 'house-1', name: 'The Santos Family' }, error: null },
+        countResult: { count: null, error: new Error('count failed') },
+      });
+      await expect(getHouseholdOwnedBy(client, 'user-1')).rejects.toThrow('count failed');
+    });
+  });
+
+  describe('deleteHousehold', () => {
+    it('deletes by household id', async () => {
+      const client = fakeClient({ deleteResult: { error: null } });
+      await deleteHousehold(client, 'house-1');
+      expect(client.lastDeleteEqArgs).toEqual(['id', 'house-1']);
+    });
+
+    it('throws when the delete errors', async () => {
+      const client = fakeClient({ deleteResult: { error: new Error('permission denied') } });
+      await expect(deleteHousehold(client, 'house-1')).rejects.toThrow('permission denied');
+    });
   });
 });
