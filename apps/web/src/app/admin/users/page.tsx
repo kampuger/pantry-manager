@@ -11,10 +11,13 @@ import {
   grantAdmin,
   revokeAdmin,
   deleteUser,
+  getHouseholdOwnedBy,
+  deleteHousehold,
   listPendingApplications,
   markApplicationApproved,
   markApplicationRejected,
   type AdminUserRow,
+  type HouseholdSummary,
   type AccessApplication,
 } from '@pantry/supabase-client';
 import { supabase } from '@/lib/supabaseClient';
@@ -260,6 +263,30 @@ export default function AdminUsersPage() {
     await runUserAction([user.id], (id) => deleteUser(supabase, id));
   }
 
+  async function handleDeleteHouseholdAndRetry(user: AdminUserRow) {
+    setActionError(null);
+    let household: HouseholdSummary | null;
+    try {
+      household = await getHouseholdOwnedBy(supabase, user.id);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Failed to look up household');
+      return;
+    }
+    if (!household) {
+      await runUserAction([user.id], (id) => deleteUser(supabase, id));
+      return;
+    }
+    const memberWord = household.memberCount === 1 ? 'member' : 'members';
+    const confirmed = window.confirm(
+      `Delete household "${household.name}" (${household.memberCount} ${memberWord}) to unblock deleting ${user.email ?? 'this user'}? This cannot be undone.`
+    );
+    if (!confirmed) return;
+    await runUserAction([user.id], async (id) => {
+      await deleteHousehold(supabase, household.id);
+      await deleteUser(supabase, id);
+    });
+  }
+
   if (authLoading || checkingAccess) return null;
 
   if (!session) {
@@ -499,7 +526,18 @@ export default function AdminUsersPage() {
                   </div>
                 </div>
                 {userRowErrors[user.id] && (
-                  <p style={{ color: color.destructive, fontSize: 13, margin: 0 }}>{userRowErrors[user.id]}</p>
+                  <>
+                    <p style={{ color: color.destructive, fontSize: 13, margin: 0 }}>{userRowErrors[user.id]}</p>
+                    {userRowErrors[user.id].includes('created a household') && (
+                      <button
+                        onClick={() => handleDeleteHouseholdAndRetry(user)}
+                        disabled={bulkUserBusy}
+                        style={buttonStyle('danger')}
+                      >
+                        Delete household and retry
+                      </button>
+                    )}
+                  </>
                 )}
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <button onClick={() => handleToggleSuspend(user)} disabled={busyUserId === user.id} style={buttonStyle('secondary')}>
@@ -586,7 +624,18 @@ export default function AdminUsersPage() {
                           </button>
                         </div>
                         {userRowErrors[user.id] && (
-                          <p style={{ color: color.destructive, fontSize: 12, margin: 0 }}>{userRowErrors[user.id]}</p>
+                          <>
+                            <p style={{ color: color.destructive, fontSize: 12, margin: 0 }}>{userRowErrors[user.id]}</p>
+                            {userRowErrors[user.id].includes('created a household') && (
+                              <button
+                                onClick={() => handleDeleteHouseholdAndRetry(user)}
+                                disabled={bulkUserBusy}
+                                style={{ ...buttonStyle('danger'), fontSize: 12 }}
+                              >
+                                Delete household and retry
+                              </button>
+                            )}
+                          </>
                         )}
                       </div>
                     </td>
