@@ -39,7 +39,13 @@ export function useHousehold() {
         // failed — fall through to the normal create/join prompt rather
         // than blocking the user on a code they don't control, and never
         // surface this error to someone who didn't type anything
-        // themselves.
+        // themselves. A concurrent useHousehold() instance (nav chrome and
+        // the page both mount this hook) may have redeemed the code out
+        // from under this one — re-check before concluding there's no
+        // household.
+        const afterRedeem = await getMyHousehold(supabase, session.user.id);
+        if (!cancelled) setMembership(afterRedeem);
+        return;
       }
       if (!cancelled) setMembership(null);
     })();

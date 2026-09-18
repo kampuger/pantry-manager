@@ -28,7 +28,7 @@ export async function submitApplication(
   householdInviteCode?: string
 ): Promise<void> {
   const { error } = await client.from('access_applications').insert({
-    email,
+    email: email.trim().toLowerCase(),
     message: message?.trim() || null,
     household_invite_code: householdInviteCode?.trim() || null,
   });

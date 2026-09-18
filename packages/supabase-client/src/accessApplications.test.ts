@@ -97,6 +97,12 @@ describe('submitApplication', () => {
     expect(client.lastInsertPayload.household_invite_code).toBeNull();
   });
 
+  it('lowercases and trims the email before inserting', async () => {
+    const client = fakeClient({ insertResult: { error: null } });
+    await submitApplication(client, '  New@Example.COM  ');
+    expect(client.lastInsertPayload.email).toBe('new@example.com');
+  });
+
   it('resolves successfully on a duplicate-pending-email unique violation (code 23505)', async () => {
     const client = fakeClient({ insertResult: { error: { code: '23505', message: 'duplicate key value' } } });
     await expect(submitApplication(client, 'dup@example.com')).resolves.toBeUndefined();

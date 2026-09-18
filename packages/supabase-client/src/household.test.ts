@@ -130,6 +130,12 @@ describe('redeemHouseholdInvite', () => {
     expect(client.rpc).toHaveBeenCalledWith('redeem_household_invite', { invite_code: 'ABCD2345' });
   });
 
+  it('trims and uppercases the code before calling the RPC', async () => {
+    const client = fakeClient({ data: 'house-9', error: null });
+    await redeemHouseholdInvite(client, '  abcd2345  ');
+    expect(client.rpc).toHaveBeenCalledWith('redeem_household_invite', { invite_code: 'ABCD2345' });
+  });
+
   it('throws with the RPC error message on failure', async () => {
     const client = fakeClient({
       data: null,

@@ -49,7 +49,7 @@ export async function redeemHouseholdInvite(
   client: SupabaseClient<Database>,
   code: string
 ): Promise<HouseholdMembership> {
-  const { data, error } = await client.rpc('redeem_household_invite', { invite_code: code });
+  const { data, error } = await client.rpc('redeem_household_invite', { invite_code: code.trim().toUpperCase() });
   if (error) throw error;
   return { householdId: data, role: 'MEMBER' };
 }

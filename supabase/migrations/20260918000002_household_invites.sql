@@ -87,4 +87,4 @@ alter table access_applications add column household_invite_code text;
 
 create policy "applicants can read their own application"
   on access_applications for select
-  using (email = auth.email());
+  using (lower(email) = lower(auth.email()));
