@@ -1,7 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { getMyHousehold, createHousehold, type HouseholdMembership } from '@pantry/supabase-client';
+import {
+  getMyHousehold,
+  createHousehold,
+  redeemHouseholdInvite,
+  getMyApplicationInviteCode,
+  type HouseholdMembership,
+} from '@pantry/supabase-client';
 import { supabase } from './supabaseClient';
 import { useAuth } from './AuthProvider';
 
@@ -15,9 +21,28 @@ export function useHousehold() {
     let cancelled = false;
     setMembership('loading');
 
-    getMyHousehold(supabase, session.user.id).then((result) => {
-      if (!cancelled) setMembership(result);
-    });
+    (async () => {
+      const existing = await getMyHousehold(supabase, session.user.id);
+      if (existing) {
+        if (!cancelled) setMembership(existing);
+        return;
+      }
+      try {
+        const code = session.user.email ? await getMyApplicationInviteCode(supabase, session.user.email) : null;
+        if (code) {
+          const joined = await redeemHouseholdInvite(supabase, code);
+          if (!cancelled) setMembership(joined);
+          return;
+        }
+      } catch {
+        // Invalid, expired, or already-used code, or the lookup itself
+        // failed — fall through to the normal create/join prompt rather
+        // than blocking the user on a code they don't control, and never
+        // surface this error to someone who didn't type anything
+        // themselves.
+      }
+      if (!cancelled) setMembership(null);
+    })();
 
     return () => {
       cancelled = true;
@@ -34,5 +59,15 @@ export function useHousehold() {
     [session]
   );
 
-  return { membership, create };
+  const join = useCallback(
+    async (code: string) => {
+      if (!session) throw new Error('Not signed in');
+      const result = await redeemHouseholdInvite(supabase, code);
+      setMembership(result);
+      return result;
+    },
+    [session]
+  );
+
+  return { membership, create, join };
 }
