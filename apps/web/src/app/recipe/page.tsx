@@ -108,7 +108,7 @@ function IngredientMatcher({ householdId }: { householdId: string }) {
 
 export default function RecipePage() {
   const { session, loading: authLoading } = useAuth();
-  const { membership, create } = useHousehold();
+  const { membership, create, join } = useHousehold();
 
   if (authLoading) return null;
 
@@ -130,7 +130,7 @@ export default function RecipePage() {
     <div>
       <h1>Recipe Ingredient Checker</h1>
       {membership === 'loading' && <p style={{ marginTop: 20, color: color.mutedForeground }}>Loading…</p>}
-      {membership === null && <CreateHouseholdPrompt onCreate={create} />}
+      {membership === null && <CreateHouseholdPrompt onCreate={create} onJoin={join} />}
       {membership && membership !== 'loading' && <IngredientMatcher householdId={membership.householdId} />}
     </div>
   );

@@ -215,7 +215,7 @@ function LocationSummary({ items }: { items: PantryItemRow[] }) {
 
 export default function DashboardPage() {
   const { session, loading: authLoading } = useAuth();
-  const { membership, create } = useHousehold();
+  const { membership, create, join } = useHousehold();
   const router = useRouter();
   const [items, setItems] = useState<PantryItemRow[]>([]);
   const [notifyPrefs, setNotifyPrefs] = useState<HouseholdNotifyDefaults>({
@@ -269,7 +269,7 @@ export default function DashboardPage() {
     return (
       <div>
         {header}
-        <CreateHouseholdPrompt onCreate={create} />
+        <CreateHouseholdPrompt onCreate={create} onJoin={join} />
       </div>
     );
   }

@@ -86,7 +86,7 @@ export default function PantryPage() {
 
 function PantryPageContent() {
   const { session, loading: authLoading } = useAuth();
-  const { membership, create } = useHousehold();
+  const { membership, create, join } = useHousehold();
   const searchParams = useSearchParams();
   const [items, setItems] = useState<PantryItemRow[]>([]);
   const [editingItem, setEditingItem] = useState<PantryItemRow | null>(null);
@@ -285,7 +285,7 @@ function PantryPageContent() {
         )}
       </div>
       {membership === 'loading' && <p style={{ marginTop: 20, color: color.mutedForeground }}>Loading…</p>}
-      {membership === null && <CreateHouseholdPrompt onCreate={create} />}
+      {membership === null && <CreateHouseholdPrompt onCreate={create} onJoin={join} />}
       {membership && membership !== 'loading' && (
         <>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 20 }}>

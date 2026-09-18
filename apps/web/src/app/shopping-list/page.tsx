@@ -167,7 +167,7 @@ function RealShoppingList({ entries, onChanged }: { entries: GroceryListEntryRow
 
 export default function ShoppingListPage() {
   const { session, loading: authLoading } = useAuth();
-  const { membership, create } = useHousehold();
+  const { membership, create, join } = useHousehold();
   const [entries, setEntries] = useState<GroceryListEntryRow[]>([]);
 
   const refreshEntries = useCallback((householdId: string) => {
@@ -206,7 +206,7 @@ export default function ShoppingListPage() {
     <div>
       <h1>Shopping List</h1>
       {membership === 'loading' && <p style={{ marginTop: 20, color: color.mutedForeground }}>Loading…</p>}
-      {membership === null && <CreateHouseholdPrompt onCreate={create} />}
+      {membership === null && <CreateHouseholdPrompt onCreate={create} onJoin={join} />}
       {membership && membership !== 'loading' && (
         <>
           <AddEntryForm
