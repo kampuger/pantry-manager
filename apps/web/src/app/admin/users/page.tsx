@@ -10,7 +10,11 @@ import {
   unsuspendUser,
   grantAdmin,
   revokeAdmin,
+  listPendingApplications,
+  markApplicationApproved,
+  markApplicationRejected,
   type AdminUserRow,
+  type AccessApplication,
 } from '@pantry/supabase-client';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/lib/AuthProvider';
@@ -38,12 +42,25 @@ export default function AdminUsersPage() {
   const [inviteIsError, setInviteIsError] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busyUserId, setBusyUserId] = useState<string | null>(null);
+  const [applications, setApplications] = useState<AccessApplication[]>([]);
+  const [applicationsError, setApplicationsError] = useState<string | null>(null);
+  const [selectedApplicationIds, setSelectedApplicationIds] = useState<Set<string>>(new Set());
+  const [applicationsBusy, setApplicationsBusy] = useState(false);
+  const [applicationRowErrors, setApplicationRowErrors] = useState<Record<string, string>>({});
 
   async function refreshUsers() {
     try {
       setUsers(await listAllUsers(supabase));
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : 'Failed to load users');
+    }
+  }
+
+  async function refreshApplications() {
+    try {
+      setApplications(await listPendingApplications(supabase));
+    } catch (err) {
+      setApplicationsError(err instanceof Error ? err.message : 'Failed to load applications');
     }
   }
 
@@ -55,7 +72,10 @@ export default function AdminUsersPage() {
     checkIsPlatformAdmin(supabase)
       .then((ok) => {
         setIsAdmin(ok);
-        if (ok) refreshUsers();
+        if (ok) {
+          refreshUsers();
+          refreshApplications();
+        }
       })
       .finally(() => setCheckingAccess(false));
   }, [session]);
@@ -107,6 +127,57 @@ export default function AdminUsersPage() {
     }
   }
 
+  function toggleApplicationSelected(id: string) {
+    setSelectedApplicationIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAllApplications() {
+    setSelectedApplicationIds((prev) =>
+      prev.size === applications.length ? new Set() : new Set(applications.map((a) => a.id))
+    );
+  }
+
+  async function runApplicationAction(
+    ids: string[],
+    action: (application: AccessApplication) => Promise<void>
+  ) {
+    setApplicationsBusy(true);
+    const errors: Record<string, string> = {};
+    for (const id of ids) {
+      const application = applications.find((a) => a.id === id);
+      if (!application) continue;
+      try {
+        await action(application);
+      } catch (err) {
+        errors[id] = err instanceof Error ? err.message : 'Action failed';
+      }
+    }
+    setApplicationRowErrors(errors);
+    setSelectedApplicationIds(new Set());
+    await refreshApplications();
+    setApplicationsBusy(false);
+  }
+
+  async function handleApprove(ids: string[]) {
+    if (!session) return;
+    await runApplicationAction(ids, async (application) => {
+      await inviteUser(supabase, application.email);
+      await markApplicationApproved(supabase, application.id, session.user.id);
+    });
+  }
+
+  async function handleReject(ids: string[]) {
+    if (!session) return;
+    await runApplicationAction(ids, async (application) => {
+      await markApplicationRejected(supabase, application.id, session.user.id);
+    });
+  }
+
   if (authLoading || checkingAccess) return null;
 
   if (!session) {
@@ -140,6 +211,124 @@ export default function AdminUsersPage() {
           Invite new users, suspend accounts, and grant or remove admin access.
         </p>
       </header>
+
+      <section style={{ display: 'grid', gap: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 8 }}>
+          <h2 style={{ fontSize: 18, margin: 0, letterSpacing: '-0.01em' }}>Pending applications</h2>
+          {selectedApplicationIds.size > 0 && (
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => handleApprove([...selectedApplicationIds])}
+                disabled={applicationsBusy}
+                style={buttonStyle('primary')}
+              >
+                Approve {selectedApplicationIds.size} selected
+              </button>
+              <button
+                onClick={() => handleReject([...selectedApplicationIds])}
+                disabled={applicationsBusy}
+                style={buttonStyle('secondary')}
+              >
+                Reject {selectedApplicationIds.size} selected
+              </button>
+            </div>
+          )}
+        </div>
+
+        {applicationsError && <p style={{ color: color.destructive, fontSize: 14, margin: 0 }}>{applicationsError}</p>}
+
+        {applications.length === 0 ? (
+          <p style={{ ...cardStyle, padding: 16, margin: 0, color: color.mutedForeground, fontSize: 14 }}>
+            No pending applications.
+          </p>
+        ) : isMobile ? (
+          <div style={{ display: 'grid', gap: 12 }}>
+            {applications.map((application) => (
+              <div key={application.id} style={{ ...cardStyle, padding: 16, display: 'grid', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                  <input
+                    type="checkbox"
+                    checked={selectedApplicationIds.has(application.id)}
+                    onChange={() => toggleApplicationSelected(application.id)}
+                    style={{ marginTop: 3 }}
+                  />
+                  <div style={{ display: 'grid', gap: 4 }}>
+                    <div style={{ fontWeight: 600, fontSize: 14, wordBreak: 'break-all' }}>{application.email}</div>
+                    {application.message && (
+                      <div style={{ fontSize: 13, color: color.mutedForeground }}>{application.message}</div>
+                    )}
+                    <div style={{ fontSize: 12, color: color.mutedForeground }}>
+                      Applied {formatJoined(application.submittedAt)}
+                    </div>
+                  </div>
+                </div>
+                {applicationRowErrors[application.id] && (
+                  <p style={{ color: color.destructive, fontSize: 13, margin: 0 }}>{applicationRowErrors[application.id]}</p>
+                )}
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button onClick={() => handleApprove([application.id])} disabled={applicationsBusy} style={buttonStyle('primary')}>
+                    Approve
+                  </button>
+                  <button onClick={() => handleReject([application.id])} disabled={applicationsBusy} style={buttonStyle('secondary')}>
+                    Reject
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ ...cardStyle, padding: 20, overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+              <thead>
+                <tr style={{ borderBottom: `1px solid ${color.border}`, textAlign: 'left' }}>
+                  <th style={{ padding: '8px 10px', width: 32 }}>
+                    <input
+                      type="checkbox"
+                      checked={applications.length > 0 && selectedApplicationIds.size === applications.length}
+                      onChange={toggleSelectAllApplications}
+                    />
+                  </th>
+                  <th style={{ padding: '8px 10px', color: color.mutedForeground, fontWeight: 600 }}>Email</th>
+                  <th style={{ padding: '8px 10px', color: color.mutedForeground, fontWeight: 600 }}>Message</th>
+                  <th style={{ padding: '8px 10px', color: color.mutedForeground, fontWeight: 600 }}>Applied</th>
+                  <th style={{ padding: '8px 10px', color: color.mutedForeground, fontWeight: 600 }} />
+                </tr>
+              </thead>
+              <tbody>
+                {applications.map((application) => (
+                  <tr key={application.id} style={{ borderBottom: `1px solid ${color.border}` }}>
+                    <td style={{ padding: '10px' }}>
+                      <input
+                        type="checkbox"
+                        checked={selectedApplicationIds.has(application.id)}
+                        onChange={() => toggleApplicationSelected(application.id)}
+                      />
+                    </td>
+                    <td style={{ padding: '10px', wordBreak: 'break-all' }}>{application.email}</td>
+                    <td style={{ padding: '10px', color: color.mutedForeground }}>{application.message ?? '—'}</td>
+                    <td style={{ padding: '10px', color: color.mutedForeground }}>{formatJoined(application.submittedAt)}</td>
+                    <td style={{ padding: '10px' }}>
+                      <div style={{ display: 'grid', gap: 4 }}>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <button onClick={() => handleApprove([application.id])} disabled={applicationsBusy} style={buttonStyle('primary')}>
+                            Approve
+                          </button>
+                          <button onClick={() => handleReject([application.id])} disabled={applicationsBusy} style={buttonStyle('secondary')}>
+                            Reject
+                          </button>
+                        </div>
+                        {applicationRowErrors[application.id] && (
+                          <p style={{ color: color.destructive, fontSize: 12, margin: 0 }}>{applicationRowErrors[application.id]}</p>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
 
       <form
         onSubmit={handleInvite}
