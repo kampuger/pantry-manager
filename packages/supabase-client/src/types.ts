@@ -142,11 +142,31 @@ export interface Database {
           submitted_at: string;
           reviewed_at: string | null;
           reviewed_by: string | null;
+          household_invite_code: string | null;
         };
         Insert: Partial<Database['public']['Tables']['access_applications']['Row']> & {
           email: string;
         };
         Update: Partial<Database['public']['Tables']['access_applications']['Row']>;
+        Relationships: [];
+      };
+      household_invites: {
+        Row: {
+          id: string;
+          household_id: string;
+          code: string;
+          created_by: string;
+          created_at: string;
+          expires_at: string;
+          used_at: string | null;
+          used_by: string | null;
+        };
+        Insert: Partial<Database['public']['Tables']['household_invites']['Row']> & {
+          household_id: string;
+          code: string;
+          created_by: string;
+        };
+        Update: Partial<Database['public']['Tables']['household_invites']['Row']>;
         Relationships: [];
       };
     };
@@ -167,6 +187,10 @@ export interface Database {
       is_platform_admin: {
         Args: Record<string, never>;
         Returns: boolean;
+      };
+      redeem_household_invite: {
+        Args: { invite_code: string };
+        Returns: string;
       };
     };
   };
