@@ -163,6 +163,10 @@ export default function AdminUsersPage() {
   const [bulkUserBusy, setBulkUserBusy] = useState(false);
   const [expandedHouseholdUserId, setExpandedHouseholdUserId] = useState<string | null>(null);
   const [householdPanels, setHouseholdPanels] = useState<Record<string, HouseholdPanelState>>({});
+  const [applicationSearch, setApplicationSearch] = useState('');
+  const [userSearch, setUserSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'suspended'>('all');
+  const [roleFilter, setRoleFilter] = useState<'all' | 'admin'>('all');
 
   async function refreshUsers() {
     try {
@@ -275,6 +279,11 @@ export default function AdminUsersPage() {
     }
   }
 
+  const filteredApplications = applications.filter((application) => {
+    if (!applicationSearch.trim()) return true;
+    return application.email.toLowerCase().includes(applicationSearch.trim().toLowerCase());
+  });
+
   function toggleApplicationSelected(id: string) {
     setSelectedApplicationIds((prev) => {
       const next = new Set(prev);
@@ -286,7 +295,9 @@ export default function AdminUsersPage() {
 
   function toggleSelectAllApplications() {
     setSelectedApplicationIds((prev) =>
-      prev.size === applications.length ? new Set() : new Set(applications.map((a) => a.id))
+      filteredApplications.length > 0 && filteredApplications.every((a) => prev.has(a.id))
+        ? new Set()
+        : new Set(filteredApplications.map((a) => a.id))
     );
   }
 
@@ -326,7 +337,23 @@ export default function AdminUsersPage() {
     });
   }
 
-  const selectableUserIds = session ? users.filter((u) => u.id !== session.user.id).map((u) => u.id) : [];
+  const filteredUsers = users.filter((user) => {
+    if (userSearch.trim() && !(user.email ?? '').toLowerCase().includes(userSearch.trim().toLowerCase())) {
+      return false;
+    }
+    if (statusFilter !== 'all') {
+      const suspended = isSuspended(user);
+      if (statusFilter === 'active' && suspended) return false;
+      if (statusFilter === 'suspended' && !suspended) return false;
+    }
+    if (roleFilter === 'admin' && !user.isAdmin) return false;
+    return true;
+  });
+
+  // "Select all" only ever selects what's currently visible — a filter
+  // narrowing the list shouldn't let one click silently select rows the
+  // admin can't see.
+  const selectableUserIds = session ? filteredUsers.filter((u) => u.id !== session.user.id).map((u) => u.id) : [];
   const allSelectableUsersSelected =
     selectableUserIds.length > 0 && selectableUserIds.every((id) => selectedUserIds.has(id));
 
@@ -510,13 +537,27 @@ export default function AdminUsersPage() {
 
         {applicationsError && <p style={{ color: color.destructive, fontSize: 14, margin: 0 }}>{applicationsError}</p>}
 
+        {applications.length > 0 && (
+          <input
+            type="search"
+            value={applicationSearch}
+            onChange={(e) => setApplicationSearch(e.target.value)}
+            placeholder="Search by email…"
+            style={{ ...inputStyle, width: '100%', maxWidth: 280 }}
+          />
+        )}
+
         {applications.length === 0 ? (
           <p style={{ ...cardStyle, padding: 16, margin: 0, color: color.mutedForeground, fontSize: 14 }}>
             No pending applications.
           </p>
+        ) : filteredApplications.length === 0 ? (
+          <p style={{ ...cardStyle, padding: 16, margin: 0, color: color.mutedForeground, fontSize: 14 }}>
+            No applications match &quot;{applicationSearch}&quot;.
+          </p>
         ) : isMobile ? (
           <div style={{ display: 'grid', gap: 12 }}>
-            {applications.map((application) => (
+            {filteredApplications.map((application) => (
               <div key={application.id} style={{ ...cardStyle, padding: 16, display: 'grid', gap: 8 }}>
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
                   <input
@@ -557,7 +598,7 @@ export default function AdminUsersPage() {
                   <th style={{ padding: '8px 10px', width: 32 }}>
                     <input
                       type="checkbox"
-                      checked={applications.length > 0 && selectedApplicationIds.size === applications.length}
+                      checked={filteredApplications.length > 0 && filteredApplications.every((a) => selectedApplicationIds.has(a.id))}
                       onChange={toggleSelectAllApplications}
                     />
                   </th>
@@ -568,7 +609,7 @@ export default function AdminUsersPage() {
                 </tr>
               </thead>
               <tbody>
-                {applications.map((application) => (
+                {filteredApplications.map((application) => (
                   <tr key={application.id} style={{ borderBottom: `1px solid ${color.border}` }}>
                     <td style={{ padding: '10px' }}>
                       <input
@@ -631,9 +672,42 @@ export default function AdminUsersPage() {
         {loadError && <AlertBanner tone="destructive">{loadError}</AlertBanner>}
         {actionError && <AlertBanner tone="destructive">{actionError}</AlertBanner>}
 
-        {isMobile ? (
+        {users.length > 0 && (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <input
+              type="search"
+              value={userSearch}
+              onChange={(e) => setUserSearch(e.target.value)}
+              placeholder="Search by email…"
+              style={{ ...inputStyle, width: '100%', maxWidth: 280, flex: '1 1 200px' }}
+            />
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as 'all' | 'active' | 'suspended')}
+              style={{ ...inputStyle, width: 'auto' }}
+            >
+              <option value="all">All statuses</option>
+              <option value="active">Active</option>
+              <option value="suspended">Suspended</option>
+            </select>
+            <select
+              value={roleFilter}
+              onChange={(e) => setRoleFilter(e.target.value as 'all' | 'admin')}
+              style={{ ...inputStyle, width: 'auto' }}
+            >
+              <option value="all">All roles</option>
+              <option value="admin">Admins only</option>
+            </select>
+          </div>
+        )}
+
+        {users.length > 0 && filteredUsers.length === 0 ? (
+          <p style={{ ...cardStyle, padding: 16, margin: 0, color: color.mutedForeground, fontSize: 14 }}>
+            No users match your search/filters.
+          </p>
+        ) : isMobile ? (
         <div style={{ display: 'grid', gap: 12 }}>
-          {users.map((user) => {
+          {filteredUsers.map((user) => {
             const suspended = isSuspended(user);
             const isSelf = user.id === session.user.id;
             return (
@@ -725,7 +799,7 @@ export default function AdminUsersPage() {
               </tr>
             </thead>
             <tbody>
-              {users.map((user) => {
+              {filteredUsers.map((user) => {
                 const suspended = isSuspended(user);
                 const isSelf = user.id === session.user.id;
                 return (
