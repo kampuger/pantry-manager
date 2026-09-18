@@ -1647,6 +1647,8 @@ git commit -m "feat(web): replace sign-up with an apply-for-access flow"
 
 **Files:** none — verification only, no code changes expected unless a live-only bug surfaces.
 
+**Amended after the final whole-branch review** to add a third required hand-off item beyond the migration apply and function redeploy: disabling Supabase Auth's "Allow new users to sign up" (Authentication → Providers → Email in Supabase Studio). Removing the login page's sign-up UI does not close Supabase's underlying `/auth/v1/signup` REST endpoint — it stays open to anyone holding the anon key until this project-level setting is turned off. Admin-initiated invites are unaffected (they use the service_role Admin API, a separate path from this toggle). This assistant has no Supabase dashboard access, so this is the user's action alone, same as the migration and function deploy.
+
 **Interfaces:**
 - Consumes: everything from Tasks 1–6, live.
 
@@ -1678,6 +1680,18 @@ curl -s -o /dev/null -w "HTTP %{http_code}\n" -X POST "$NEXT_PUBLIC_SUPABASE_URL
 
 Expected: `HTTP 401` (rejected for lacking a bearer token) — confirms the function is live; it does not confirm `delete_user` specifically works, which needs Step 4 below.
 
+- [ ] **Step 2b: Confirm the public signup endpoint is actually closed**
+
+Ask the user to disable "Allow new users to sign up" under Authentication → Providers → Email in Supabase Studio. Then verify directly:
+
+```bash
+curl -s -o /dev/null -w "HTTP %{http_code}\n" -X POST "$NEXT_PUBLIC_SUPABASE_URL/auth/v1/signup" \
+  -H "Content-Type: application/json" -H "apikey: $NEXT_PUBLIC_SUPABASE_ANON_KEY" \
+  -d '{"email":"kampuger+signupcheck@gmail.com","password":"checking-this-is-closed-123"}'
+```
+
+Expected: a 4xx rejection (e.g. `422`/`400` with a "signups not allowed" message), not `200`. If it returns `200`, the account was actually created — ask the user to re-check the setting, and delete the resulting throwaway auth user via Studio.
+
 - [ ] **Step 3: Live Playwright check of the apply flow and the pending-applications queue**
 
 Write a temporary script (matching the `.tmp-*.mjs` pattern used throughout this project) that:
@@ -1693,7 +1707,8 @@ Ask the user to, from `/admin/users`:
 1. Confirm their own row's checkbox is disabled (both in the desktop table and, on a narrow viewport, the mobile card) and cannot be added to a selection.
 2. Select two throwaway test users (existing junk accounts from earlier in this project are fine for this), bulk-suspend them, confirm both flip to "Suspended," then bulk-unsuspend and confirm they flip back.
 3. Select one throwaway user, click "Delete selected," decline the confirm dialog, and confirm nothing happened (user still present) — then repeat and accept, confirming the user disappears from the list.
-4. **Specifically and separately**: using a throwaway account, sign in as that user in a separate session and have them create a household (so they become a real `households.created_by`). Back in the admin panel, attempt to delete that user and confirm the response is the clear "This user created a household and can't be deleted..." message rather than a raw database error. If the actual error text Supabase's Admin API returns doesn't match the `/household/i` or `/foreign key/i` patterns in Task 3's translation code, note the real text and fix the regex in `supabase/functions/admin-manage-users/index.ts` to match it, then ask the user to redeploy again.
+4. **Specifically and separately**: using a throwaway account, sign in as that user in a separate session and have them create a household (so they become a real `households.created_by`). Back in the admin panel, attempt to delete that user and confirm the response is the clear "This user created a household and can't be deleted..." message rather than a raw database error. **Expect this to need a follow-up fix**: Supabase's GoTrue typically returns a generic `"Database error deleting user"` for any foreign-key-violation-caused delete failure, not the underlying Postgres constraint text — so there's a real chance neither the `/household/i` nor the `/foreign key/i` branch in `supabase/functions/admin-manage-users/index.ts` fires on the actual message, and the admin sees the generic string unchanged. If so, note the exact real text returned and adjust the regex (or, if the message carries no distinguishing detail at all, consider having the function inspect `error.status`/`error.code` instead of `error.message`) to match reality, then ask the user to redeploy again.
+5. **Second, distinct case**: using a throwaway admin account (grant a throwaway user admin via Studio's `platform_admins` insert if needed, matching the pattern already used for platform-admin testing), have that admin approve or reject at least one application (so `access_applications.reviewed_by` now references them). Attempt to delete that admin account and confirm it now succeeds — this exercises the final-review fix (`reviewed_by ... on delete set null`), and is a genuinely different code path from the households-restrict case above (a `set null` cascade succeeding, not an error being translated). Revoke their admin access first via Studio if `prevent_removing_last_admin` blocks the delete indirectly through a lingering `platform_admins` row.
 
 - [ ] **Step 5: Report results**
 
