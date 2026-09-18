@@ -30,6 +30,28 @@ function formatJoined(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+function AlertBanner({ tone, children }: { tone: 'destructive' | 'success'; children: React.ReactNode }) {
+  return (
+    <div
+      role={tone === 'destructive' ? 'alert' : 'status'}
+      style={{
+        display: 'flex',
+        alignItems: 'flex-start',
+        gap: 8,
+        padding: '10px 14px',
+        borderRadius: 8,
+        fontSize: 13,
+        lineHeight: 1.5,
+        background: tone === 'destructive' ? color.destructiveBg : color.successBg,
+        color: tone === 'destructive' ? color.destructive : color.success,
+      }}
+    >
+      <span aria-hidden style={{ flexShrink: 0, fontWeight: 700 }}>{tone === 'destructive' ? '!' : '✓'}</span>
+      <span>{children}</span>
+    </div>
+  );
+}
+
 export default function AdminUsersPage() {
   const { session, loading: authLoading } = useAuth();
   const isMobile = useIsMobile();
@@ -37,6 +59,7 @@ export default function AdminUsersPage() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [users, setUsers] = useState<AdminUserRow[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [showInviteForm, setShowInviteForm] = useState(false);
   const [email, setEmail] = useState('');
   const [inviting, setInviting] = useState(false);
   const [inviteStatus, setInviteStatus] = useState<string | null>(null);
@@ -264,12 +287,45 @@ export default function AdminUsersPage() {
 
   return (
     <div style={{ display: 'grid', gap: 24 }}>
-      <header>
-        <h1 style={{ fontSize: 28, margin: 0, letterSpacing: '-0.02em' }}>Manage users</h1>
-        <p style={{ color: color.mutedForeground, marginTop: 8, fontSize: 14 }}>
-          Invite new users, suspend accounts, and grant or remove admin access.
-        </p>
+      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
+        <div>
+          <h1 style={{ fontSize: 28, margin: 0, letterSpacing: '-0.02em' }}>Manage users</h1>
+          <p style={{ color: color.mutedForeground, marginTop: 8, fontSize: 14 }}>
+            Review applications, and manage who has access.
+          </p>
+        </div>
+        <button onClick={() => setShowInviteForm((v) => !v)} style={buttonStyle('secondary')}>
+          {showInviteForm ? 'Cancel' : '+ Invite user'}
+        </button>
       </header>
+
+      {showInviteForm && (
+        <form
+          onSubmit={handleInvite}
+          style={{ ...cardStyle, padding: 20, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'end' }}
+        >
+          <label style={{ ...labelStyle, flex: '1 1 240px' }}>
+            Email
+            <input
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="teammate@example.com"
+              style={inputStyle}
+              autoFocus
+            />
+          </label>
+          <button type="submit" disabled={inviting} style={buttonStyle('primary')}>
+            {inviting ? 'Sending…' : 'Send invite'}
+          </button>
+          {inviteStatus && (
+            <div style={{ width: '100%' }}>
+              <AlertBanner tone={inviteIsError ? 'destructive' : 'success'}>{inviteStatus}</AlertBanner>
+            </div>
+          )}
+        </form>
+      )}
 
       <section style={{ display: 'grid', gap: 12 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 8 }}>
@@ -364,7 +420,14 @@ export default function AdminUsersPage() {
                       />
                     </td>
                     <td style={{ padding: '10px', wordBreak: 'break-all' }}>{application.email}</td>
-                    <td style={{ padding: '10px', color: color.mutedForeground }}>{application.message ?? '—'}</td>
+                    <td style={{ padding: '10px', color: color.mutedForeground, maxWidth: 240 }}>
+                      <span
+                        title={application.message ?? undefined}
+                        style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                      >
+                        {application.message ?? '—'}
+                      </span>
+                    </td>
                     <td style={{ padding: '10px', color: color.mutedForeground }}>{formatJoined(application.submittedAt)}</td>
                     <td style={{ padding: '10px' }}>
                       <div style={{ display: 'grid', gap: 4 }}>
@@ -389,49 +452,28 @@ export default function AdminUsersPage() {
         )}
       </section>
 
-      <form
-        onSubmit={handleInvite}
-        style={{ ...cardStyle, padding: 20, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'end' }}
-      >
-        <label style={{ ...labelStyle, flex: '1 1 240px' }}>
-          Email
-          <input
-            type="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="teammate@example.com"
-            style={inputStyle}
-          />
-        </label>
-        <button type="submit" disabled={inviting} style={buttonStyle('primary')}>
-          {inviting ? 'Sending…' : 'Send invite'}
-        </button>
-        {inviteStatus && (
-          <p style={{ width: '100%', margin: 0, fontSize: 13, color: inviteIsError ? color.destructive : color.success }}>
-            {inviteStatus}
-          </p>
-        )}
-      </form>
-
-      {loadError && <p style={{ color: color.destructive, fontSize: 14, margin: 0 }}>{loadError}</p>}
-      {actionError && <p style={{ color: color.destructive, fontSize: 14, margin: 0 }}>{actionError}</p>}
-
-      {selectedUserIds.size > 0 && (
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button onClick={handleBulkSuspend} disabled={bulkUserBusy} style={buttonStyle('secondary')}>
-            Suspend selected ({selectedUserIds.size})
-          </button>
-          <button onClick={handleBulkUnsuspend} disabled={bulkUserBusy} style={buttonStyle('secondary')}>
-            Unsuspend selected ({selectedUserIds.size})
-          </button>
-          <button onClick={handleBulkDelete} disabled={bulkUserBusy} style={buttonStyle('danger')}>
-            Delete selected ({selectedUserIds.size})
-          </button>
+      <section style={{ display: 'grid', gap: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 8 }}>
+          <h2 style={{ fontSize: 18, margin: 0, letterSpacing: '-0.01em' }}>All users</h2>
+          {selectedUserIds.size > 0 && (
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button onClick={handleBulkSuspend} disabled={bulkUserBusy} style={buttonStyle('secondary')}>
+                Suspend ({selectedUserIds.size})
+              </button>
+              <button onClick={handleBulkUnsuspend} disabled={bulkUserBusy} style={buttonStyle('secondary')}>
+                Unsuspend ({selectedUserIds.size})
+              </button>
+              <button onClick={handleBulkDelete} disabled={bulkUserBusy} style={buttonStyle('danger')}>
+                Delete ({selectedUserIds.size})
+              </button>
+            </div>
+          )}
         </div>
-      )}
 
-      {isMobile ? (
+        {loadError && <AlertBanner tone="destructive">{loadError}</AlertBanner>}
+        {actionError && <AlertBanner tone="destructive">{actionError}</AlertBanner>}
+
+        {isMobile ? (
         <div style={{ display: 'grid', gap: 12 }}>
           {users.map((user) => {
             const suspended = isSuspended(user);
@@ -467,7 +509,7 @@ export default function AdminUsersPage() {
                     onClick={() => handleToggleAdmin(user)}
                     disabled={busyUserId === user.id || isSelf}
                     title={isSelf ? "You can't remove your own admin access from here" : undefined}
-                    style={buttonStyle('secondary')}
+                    style={{ ...buttonStyle('ghost'), padding: '10px 12px' }}
                   >
                     {user.isAdmin ? 'Remove admin' : 'Make admin'}
                   </button>
@@ -530,7 +572,7 @@ export default function AdminUsersPage() {
                             onClick={() => handleToggleAdmin(user)}
                             disabled={busyUserId === user.id || isSelf}
                             title={isSelf ? "You can't remove your own admin access from here" : undefined}
-                            style={buttonStyle('secondary')}
+                            style={{ ...buttonStyle('ghost'), padding: '10px 12px' }}
                           >
                             {user.isAdmin ? 'Remove admin' : 'Make admin'}
                           </button>
@@ -554,7 +596,8 @@ export default function AdminUsersPage() {
             </tbody>
           </table>
         </div>
-      )}
+        )}
+      </section>
     </div>
   );
 }
