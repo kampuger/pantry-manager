@@ -196,7 +196,7 @@ describe('getHouseholdOwnedBy / deleteHousehold', () => {
   function fakeClient(handlers: {
     householdResult?: { data: any; error: any };
     countResult?: { count: number | null; error: any };
-    deleteResult?: { error: any };
+    deleteResult?: { data?: any; error: any };
   }) {
     const state: any = {};
     state.from = (table: string): any => {
@@ -205,13 +205,28 @@ describe('getHouseholdOwnedBy / deleteHousehold', () => {
           select: () => ({
             eq: (...args: any[]) => {
               state.lastHouseholdEqArgs = args;
-              return { maybeSingle: async () => handlers.householdResult };
+              return {
+                order: (...orderArgs: any[]) => {
+                  state.lastHouseholdOrderArgs = orderArgs;
+                  return {
+                    limit: (limitArg: number) => {
+                      state.lastHouseholdLimitArg = limitArg;
+                      return { maybeSingle: async () => handlers.householdResult };
+                    },
+                  };
+                },
+              };
             },
           }),
           delete: () => ({
             eq: (...args: any[]) => {
               state.lastDeleteEqArgs = args;
-              return Promise.resolve(handlers.deleteResult);
+              return {
+                select: (columns: string) => {
+                  state.lastDeleteSelectColumns = columns;
+                  return Promise.resolve(handlers.deleteResult);
+                },
+              };
             },
           }),
         };
@@ -234,7 +249,10 @@ describe('getHouseholdOwnedBy / deleteHousehold', () => {
     };
     return state as SupabaseClient<Database> & {
       lastHouseholdEqArgs?: any[];
+      lastHouseholdOrderArgs?: any[];
+      lastHouseholdLimitArg?: number;
       lastDeleteEqArgs?: any[];
+      lastDeleteSelectColumns?: any;
       lastCountSelectColumns?: any;
       lastCountOptions?: any;
       lastCountEqArgs?: any[];
@@ -286,11 +304,21 @@ describe('getHouseholdOwnedBy / deleteHousehold', () => {
       });
       await expect(getHouseholdOwnedBy(client, 'user-1')).rejects.toThrow('count failed');
     });
+
+    it('resolves the first household when the user owns more than one, ordered by creation', async () => {
+      const client = fakeClient({
+        householdResult: { data: { id: 'house-1', name: 'Oldest House' }, error: null },
+        countResult: { count: 1, error: null },
+      });
+      await getHouseholdOwnedBy(client, 'user-1');
+      expect(client.lastHouseholdOrderArgs).toEqual(['created_at']);
+      expect(client.lastHouseholdLimitArg).toBe(1);
+    });
   });
 
   describe('deleteHousehold', () => {
     it('deletes by household id', async () => {
-      const client = fakeClient({ deleteResult: { error: null } });
+      const client = fakeClient({ deleteResult: { data: [{ id: 'house-1' }], error: null } });
       await deleteHousehold(client, 'house-1');
       expect(client.lastDeleteEqArgs).toEqual(['id', 'house-1']);
     });
@@ -298,6 +326,13 @@ describe('getHouseholdOwnedBy / deleteHousehold', () => {
     it('throws when the delete errors', async () => {
       const client = fakeClient({ deleteResult: { error: new Error('permission denied') } });
       await expect(deleteHousehold(client, 'house-1')).rejects.toThrow('permission denied');
+    });
+
+    it('throws when the delete matches zero rows (RLS-denied or already gone)', async () => {
+      const client = fakeClient({ deleteResult: { data: [], error: null } });
+      await expect(deleteHousehold(client, 'house-1')).rejects.toThrow(
+        'Household was not deleted — it no longer exists, or you do not have permission.'
+      );
     });
   });
 });

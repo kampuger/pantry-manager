@@ -120,6 +120,8 @@ export async function getHouseholdOwnedBy(
     .from('households')
     .select('id, name')
     .eq('created_by', userId)
+    .order('created_at')
+    .limit(1)
     .maybeSingle();
   if (error) throw error;
   if (!household) return null;
@@ -134,6 +136,14 @@ export async function getHouseholdOwnedBy(
 }
 
 export async function deleteHousehold(client: SupabaseClient<Database>, householdId: string): Promise<void> {
-  const { error } = await client.from('households').delete().eq('id', householdId);
+  // `.select()` matters here for the same reason it does in
+  // updateHouseholdNotificationPrefs: RLS can silently filter a delete down
+  // to zero affected rows (unauthorized caller, or the row is already
+  // gone), which comes back as { data: null, error: null } — a false
+  // "success" the UI would otherwise report as done.
+  const { data, error } = await client.from('households').delete().eq('id', householdId).select('id');
   if (error) throw error;
+  if (!data || data.length === 0) {
+    throw new Error('Household was not deleted — it no longer exists, or you do not have permission.');
+  }
 }
