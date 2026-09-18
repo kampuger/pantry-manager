@@ -10,6 +10,7 @@ import {
   unsuspendUser,
   grantAdmin,
   revokeAdmin,
+  deleteUser,
   listPendingApplications,
   markApplicationApproved,
   markApplicationRejected,
@@ -47,6 +48,9 @@ export default function AdminUsersPage() {
   const [selectedApplicationIds, setSelectedApplicationIds] = useState<Set<string>>(new Set());
   const [applicationsBusy, setApplicationsBusy] = useState(false);
   const [applicationRowErrors, setApplicationRowErrors] = useState<Record<string, string>>({});
+  const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
+  const [userRowErrors, setUserRowErrors] = useState<Record<string, string>>({});
+  const [bulkUserBusy, setBulkUserBusy] = useState(false);
 
   async function refreshUsers() {
     try {
@@ -176,6 +180,61 @@ export default function AdminUsersPage() {
     await runApplicationAction(ids, async (application) => {
       await markApplicationRejected(supabase, application.id, session.user.id);
     });
+  }
+
+  const selectableUserIds = session ? users.filter((u) => u.id !== session.user.id).map((u) => u.id) : [];
+  const allSelectableUsersSelected =
+    selectableUserIds.length > 0 && selectableUserIds.every((id) => selectedUserIds.has(id));
+
+  function toggleUserSelected(id: string) {
+    setSelectedUserIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAllUsers() {
+    setSelectedUserIds((prev) =>
+      selectableUserIds.length > 0 && selectableUserIds.every((id) => prev.has(id)) ? new Set() : new Set(selectableUserIds)
+    );
+  }
+
+  async function runUserAction(ids: string[], action: (userId: string) => Promise<void>) {
+    setBulkUserBusy(true);
+    const errors: Record<string, string> = {};
+    for (const id of ids) {
+      try {
+        await action(id);
+      } catch (err) {
+        errors[id] = err instanceof Error ? err.message : 'Action failed';
+      }
+    }
+    setUserRowErrors(errors);
+    setSelectedUserIds(new Set());
+    await refreshUsers();
+    setBulkUserBusy(false);
+  }
+
+  async function handleBulkSuspend() {
+    await runUserAction([...selectedUserIds], (id) => suspendUser(supabase, id));
+  }
+
+  async function handleBulkUnsuspend() {
+    await runUserAction([...selectedUserIds], (id) => unsuspendUser(supabase, id));
+  }
+
+  async function handleBulkDelete() {
+    const ids = [...selectedUserIds];
+    const n = ids.length;
+    if (!window.confirm(`Delete ${n} user${n === 1 ? '' : 's'}? This cannot be undone.`)) return;
+    await runUserAction(ids, (id) => deleteUser(supabase, id));
+  }
+
+  async function handleDeleteSingle(user: AdminUserRow) {
+    if (!window.confirm(`Delete ${user.email ?? 'this user'}? This cannot be undone.`)) return;
+    await runUserAction([user.id], (id) => deleteUser(supabase, id));
   }
 
   if (authLoading || checkingAccess) return null;
@@ -358,6 +417,20 @@ export default function AdminUsersPage() {
       {loadError && <p style={{ color: color.destructive, fontSize: 14, margin: 0 }}>{loadError}</p>}
       {actionError && <p style={{ color: color.destructive, fontSize: 14, margin: 0 }}>{actionError}</p>}
 
+      {selectedUserIds.size > 0 && (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button onClick={handleBulkSuspend} disabled={bulkUserBusy} style={buttonStyle('secondary')}>
+            Suspend selected ({selectedUserIds.size})
+          </button>
+          <button onClick={handleBulkUnsuspend} disabled={bulkUserBusy} style={buttonStyle('secondary')}>
+            Unsuspend selected ({selectedUserIds.size})
+          </button>
+          <button onClick={handleBulkDelete} disabled={bulkUserBusy} style={buttonStyle('danger')}>
+            Delete selected ({selectedUserIds.size})
+          </button>
+        </div>
+      )}
+
       {isMobile ? (
         <div style={{ display: 'grid', gap: 12 }}>
           {users.map((user) => {
@@ -365,12 +438,27 @@ export default function AdminUsersPage() {
             const isSelf = user.id === session.user.id;
             return (
               <div key={user.id} style={{ ...cardStyle, padding: 16, display: 'grid', gap: 8 }}>
-                <div style={{ fontWeight: 600, fontSize: 14, wordBreak: 'break-all' }}>{user.email ?? '(no email)'}</div>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  <span style={badgeStyle(suspended ? 'destructive' : 'success')}>{suspended ? 'Suspended' : 'Active'}</span>
-                  {user.isAdmin && <span style={badgeStyle('muted')}>Admin</span>}
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                  <input
+                    type="checkbox"
+                    checked={selectedUserIds.has(user.id)}
+                    disabled={isSelf}
+                    title={isSelf ? "You can't select your own account" : undefined}
+                    onChange={() => toggleUserSelected(user.id)}
+                    style={{ marginTop: 3 }}
+                  />
+                  <div style={{ display: 'grid', gap: 8, flex: 1 }}>
+                    <div style={{ fontWeight: 600, fontSize: 14, wordBreak: 'break-all' }}>{user.email ?? '(no email)'}</div>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      <span style={badgeStyle(suspended ? 'destructive' : 'success')}>{suspended ? 'Suspended' : 'Active'}</span>
+                      {user.isAdmin && <span style={badgeStyle('muted')}>Admin</span>}
+                    </div>
+                    <div style={{ fontSize: 12, color: color.mutedForeground }}>Joined {formatJoined(user.createdAt)}</div>
+                  </div>
                 </div>
-                <div style={{ fontSize: 12, color: color.mutedForeground }}>Joined {formatJoined(user.createdAt)}</div>
+                {userRowErrors[user.id] && (
+                  <p style={{ color: color.destructive, fontSize: 13, margin: 0 }}>{userRowErrors[user.id]}</p>
+                )}
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <button onClick={() => handleToggleSuspend(user)} disabled={busyUserId === user.id} style={buttonStyle('secondary')}>
                     {suspended ? 'Unsuspend' : 'Suspend'}
@@ -383,6 +471,14 @@ export default function AdminUsersPage() {
                   >
                     {user.isAdmin ? 'Remove admin' : 'Make admin'}
                   </button>
+                  <button
+                    onClick={() => handleDeleteSingle(user)}
+                    disabled={bulkUserBusy || isSelf}
+                    title={isSelf ? "You can't delete your own account" : undefined}
+                    style={buttonStyle('danger')}
+                  >
+                    Delete
+                  </button>
                 </div>
               </div>
             );
@@ -393,6 +489,9 @@ export default function AdminUsersPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
               <tr style={{ borderBottom: `1px solid ${color.border}`, textAlign: 'left' }}>
+                <th style={{ padding: '8px 10px', width: 32 }}>
+                  <input type="checkbox" checked={allSelectableUsersSelected} onChange={toggleSelectAllUsers} />
+                </th>
                 <th style={{ padding: '8px 10px', color: color.mutedForeground, fontWeight: 600 }}>Email</th>
                 <th style={{ padding: '8px 10px', color: color.mutedForeground, fontWeight: 600 }}>Status</th>
                 <th style={{ padding: '8px 10px', color: color.mutedForeground, fontWeight: 600 }}>Admin</th>
@@ -406,6 +505,15 @@ export default function AdminUsersPage() {
                 const isSelf = user.id === session.user.id;
                 return (
                   <tr key={user.id} style={{ borderBottom: `1px solid ${color.border}` }}>
+                    <td style={{ padding: '10px' }}>
+                      <input
+                        type="checkbox"
+                        checked={selectedUserIds.has(user.id)}
+                        disabled={isSelf}
+                        title={isSelf ? "You can't select your own account" : undefined}
+                        onChange={() => toggleUserSelected(user.id)}
+                      />
+                    </td>
                     <td style={{ padding: '10px', wordBreak: 'break-all' }}>{user.email ?? '(no email)'}</td>
                     <td style={{ padding: '10px' }}>
                       <span style={badgeStyle(suspended ? 'destructive' : 'success')}>{suspended ? 'Suspended' : 'Active'}</span>
@@ -413,18 +521,31 @@ export default function AdminUsersPage() {
                     <td style={{ padding: '10px' }}>{user.isAdmin && <span style={badgeStyle('muted')}>Admin</span>}</td>
                     <td style={{ padding: '10px', color: color.mutedForeground }}>{formatJoined(user.createdAt)}</td>
                     <td style={{ padding: '10px' }}>
-                      <div style={{ display: 'flex', gap: 8 }}>
-                        <button onClick={() => handleToggleSuspend(user)} disabled={busyUserId === user.id} style={buttonStyle('secondary')}>
-                          {suspended ? 'Unsuspend' : 'Suspend'}
-                        </button>
-                        <button
-                          onClick={() => handleToggleAdmin(user)}
-                          disabled={busyUserId === user.id || isSelf}
-                          title={isSelf ? "You can't remove your own admin access from here" : undefined}
-                          style={buttonStyle('secondary')}
-                        >
-                          {user.isAdmin ? 'Remove admin' : 'Make admin'}
-                        </button>
+                      <div style={{ display: 'grid', gap: 4 }}>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <button onClick={() => handleToggleSuspend(user)} disabled={busyUserId === user.id} style={buttonStyle('secondary')}>
+                            {suspended ? 'Unsuspend' : 'Suspend'}
+                          </button>
+                          <button
+                            onClick={() => handleToggleAdmin(user)}
+                            disabled={busyUserId === user.id || isSelf}
+                            title={isSelf ? "You can't remove your own admin access from here" : undefined}
+                            style={buttonStyle('secondary')}
+                          >
+                            {user.isAdmin ? 'Remove admin' : 'Make admin'}
+                          </button>
+                          <button
+                            onClick={() => handleDeleteSingle(user)}
+                            disabled={bulkUserBusy || isSelf}
+                            title={isSelf ? "You can't delete your own account" : undefined}
+                            style={buttonStyle('danger')}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                        {userRowErrors[user.id] && (
+                          <p style={{ color: color.destructive, fontSize: 12, margin: 0 }}>{userRowErrors[user.id]}</p>
+                        )}
                       </div>
                     </td>
                   </tr>
