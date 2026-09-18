@@ -1,5 +1,6 @@
 export * from './client';
 export * from './household';
+export * from './householdInvites';
 export * from './pantry';
 export * from './platformAdmin';
 export * from './accessApplications';
