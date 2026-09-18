@@ -118,12 +118,9 @@ export default function LoginPage() {
   const [emailFocused, setEmailFocused] = useState(false);
   const [passwordFocused, setPasswordFocused] = useState(false);
   const [submitHovered, setSubmitHovered] = useState(false);
-  const [mounted, setMounted] = useState(false);
   const [message, setMessage] = useState('');
   const [inviteCode, setInviteCode] = useState('');
   const [applicationSubmitted, setApplicationSubmitted] = useState(false);
-
-  useEffect(() => setMounted(true), []);
 
   // Already signed in? Don't dead-end here — this page's job is to get
   // someone signed in, and once that's true there's nothing left to do.
@@ -297,9 +294,6 @@ export default function LoginPage() {
           style={{
             width: '100%',
             maxWidth: 380,
-            opacity: mounted ? 1 : 0,
-            transform: mounted ? 'translateY(0)' : 'translateY(10px)',
-            transition: 'opacity 400ms ease, transform 400ms ease',
           }}
         >
           <div

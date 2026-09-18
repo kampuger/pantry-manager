@@ -20,7 +20,6 @@ export function Sidebar() {
 
   useEffect(() => {
     if (!session) {
-      setIsAdmin(false);
       return;
     }
     checkIsPlatformAdmin(supabase)

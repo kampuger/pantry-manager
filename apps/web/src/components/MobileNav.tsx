@@ -49,7 +49,6 @@ export function MobileNav() {
 
   useEffect(() => {
     if (!session) {
-      setIsAdmin(false);
       return;
     }
     checkIsPlatformAdmin(supabase)
@@ -71,7 +70,8 @@ export function MobileNav() {
   // covers taps that Link's own onClick handler might miss (e.g. a
   // already-active item re-tapped).
   useEffect(() => {
-    setNavOpen(false);
+    const closeTimer = window.setTimeout(() => setNavOpen(false), 0);
+    return () => window.clearTimeout(closeTimer);
   }, [pathname]);
 
   async function handleSignOut() {

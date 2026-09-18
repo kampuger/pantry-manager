@@ -19,7 +19,6 @@ export function useHousehold() {
     if (!session) return;
 
     let cancelled = false;
-    setMembership('loading');
 
     (async () => {
       const existing = await getMyHousehold(supabase, session.user.id);

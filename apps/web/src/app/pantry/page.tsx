@@ -1,7 +1,7 @@
 'use client';
 
 import { Suspense, useCallback, useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { getFreshnessFlag, resolveNotifyThreshold, formatPHP, type HouseholdNotifyDefaults } from '@pantry/core';
 import { daysUntil, getExpiryBadgeStatus, groupItemsByLocation } from '@pantry/ui';
 import {
@@ -87,22 +87,16 @@ export default function PantryPage() {
 function PantryPageContent() {
   const { session, loading: authLoading } = useAuth();
   const { membership, create, join } = useHousehold();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const [items, setItems] = useState<PantryItemRow[]>([]);
   const [editingItem, setEditingItem] = useState<PantryItemRow | null>(null);
   const [showBulkAdd, setShowBulkAdd] = useState(false);
   const [showPrefs, setShowPrefs] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [showExpiringOnly, setShowExpiringOnly] = useState(searchParams.get('filter') === 'expiring');
+  const showExpiringOnly = searchParams.get('filter') === 'expiring';
   const [pageError, setPageError] = useState<string | null>(null);
 
-  // Re-syncs from the URL whenever it changes — not just on mount. The
-  // notification bell's "View all expiring items" link navigates to this
-  // same route with a new query string, which Next.js does not remount for,
-  // so a useState initializer alone would miss it.
-  useEffect(() => {
-    setShowExpiringOnly(searchParams.get('filter') === 'expiring');
-  }, [searchParams]);
   // Seeded with the households table's own defaults so the first paint
   // (before the fetch below resolves) already matches what a fresh
   // household would have — avoids a flash of an arbitrary threshold.
@@ -297,7 +291,13 @@ function PantryPageContent() {
               style={{ ...inputStyle, flex: '1 1 220px' }}
             />
             <button
-              onClick={() => setShowExpiringOnly((v) => !v)}
+              onClick={() => {
+                const nextParams = new URLSearchParams(searchParams.toString());
+                if (showExpiringOnly) nextParams.delete('filter');
+                else nextParams.set('filter', 'expiring');
+                const nextQuery = nextParams.toString();
+                router.replace(nextQuery ? `/pantry?${nextQuery}` : '/pantry');
+              }}
               aria-pressed={showExpiringOnly}
               style={{
                 ...buttonStyle(showExpiringOnly ? 'primary' : 'secondary'),
