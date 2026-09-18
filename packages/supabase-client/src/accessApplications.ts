@@ -24,11 +24,14 @@ const DUPLICATE_PENDING_APPLICATION_CODE = '23505';
 export async function submitApplication(
   client: SupabaseClient<Database>,
   email: string,
-  message?: string
+  message?: string,
+  householdInviteCode?: string
 ): Promise<void> {
-  const { error } = await client
-    .from('access_applications')
-    .insert({ email, message: message?.trim() || null });
+  const { error } = await client.from('access_applications').insert({
+    email,
+    message: message?.trim() || null,
+    household_invite_code: householdInviteCode?.trim() || null,
+  });
   if (error && (error as PostgrestError).code !== DUPLICATE_PENDING_APPLICATION_CODE) {
     const err = error as any;
     const thrownError = new Error(err.message);
@@ -78,4 +81,27 @@ export async function markApplicationRejected(
     .update({ status: 'rejected', reviewed_at: new Date().toISOString(), reviewed_by: reviewedBy })
     .eq('id', applicationId);
   if (error) throw error;
+}
+
+/**
+ * Filters to approved applications and orders by most-recent-reviewed so a
+ * user who (unusually) has more than one historical application row still
+ * gets a sensible single answer. RLS independently enforces that the caller
+ * can only ever see rows matching their own authenticated email, regardless
+ * of what email is passed in here.
+ */
+export async function getMyApplicationInviteCode(
+  client: SupabaseClient<Database>,
+  email: string
+): Promise<string | null> {
+  const { data, error } = await client
+    .from('access_applications')
+    .select('household_invite_code')
+    .eq('email', email)
+    .eq('status', 'approved')
+    .order('reviewed_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data?.household_invite_code ?? null;
 }

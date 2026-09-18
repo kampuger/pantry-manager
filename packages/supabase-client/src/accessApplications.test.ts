@@ -3,6 +3,7 @@ import {
   listPendingApplications,
   markApplicationApproved,
   markApplicationRejected,
+  getMyApplicationInviteCode,
 } from './accessApplications';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from './types';
@@ -57,19 +58,43 @@ describe('submitApplication', () => {
   it('inserts email and trimmed message', async () => {
     const client = fakeClient({ insertResult: { error: null } });
     await submitApplication(client, 'new@example.com', '  please let me in  ');
-    expect(client.lastInsertPayload).toEqual({ email: 'new@example.com', message: 'please let me in' });
+    expect(client.lastInsertPayload).toEqual({
+      email: 'new@example.com',
+      message: 'please let me in',
+      household_invite_code: null,
+    });
   });
 
   it('inserts a null message when none is given', async () => {
     const client = fakeClient({ insertResult: { error: null } });
     await submitApplication(client, 'new@example.com');
-    expect(client.lastInsertPayload).toEqual({ email: 'new@example.com', message: null });
+    expect(client.lastInsertPayload).toEqual({
+      email: 'new@example.com',
+      message: null,
+      household_invite_code: null,
+    });
   });
 
   it('inserts a null message when only whitespace is given', async () => {
     const client = fakeClient({ insertResult: { error: null } });
     await submitApplication(client, 'new@example.com', '   ');
-    expect(client.lastInsertPayload).toEqual({ email: 'new@example.com', message: null });
+    expect(client.lastInsertPayload).toEqual({
+      email: 'new@example.com',
+      message: null,
+      household_invite_code: null,
+    });
+  });
+
+  it('inserts a trimmed household invite code when given', async () => {
+    const client = fakeClient({ insertResult: { error: null } });
+    await submitApplication(client, 'new@example.com', 'msg', '  abcd2345  ');
+    expect(client.lastInsertPayload.household_invite_code).toBe('abcd2345');
+  });
+
+  it('inserts a null household invite code when only whitespace is given', async () => {
+    const client = fakeClient({ insertResult: { error: null } });
+    await submitApplication(client, 'new@example.com', 'msg', '   ');
+    expect(client.lastInsertPayload.household_invite_code).toBeNull();
   });
 
   it('resolves successfully on a duplicate-pending-email unique violation (code 23505)', async () => {
@@ -153,5 +178,47 @@ describe('markApplicationRejected', () => {
   it('throws when the update errors', async () => {
     const client = fakeClient({ updateResult: { error: new Error('update failed') } });
     await expect(markApplicationRejected(client, 'app-2', 'admin-1')).rejects.toThrow('update failed');
+  });
+});
+
+describe('getMyApplicationInviteCode', () => {
+  function fakeClient(result: { data: any; error: any }): SupabaseClient<Database> {
+    const from = (table: string): any => {
+      if (table !== 'access_applications') throw new Error(`Unexpected table: ${table}`);
+      return {
+        select: () => ({
+          eq: () => ({
+            eq: () => ({
+              order: () => ({
+                limit: () => ({
+                  maybeSingle: async () => result,
+                }),
+              }),
+            }),
+          }),
+        }),
+      };
+    };
+    return { from } as unknown as SupabaseClient<Database>;
+  }
+
+  it('returns the invite code from the most recent approved application', async () => {
+    const client = fakeClient({ data: { household_invite_code: 'ABCD2345' }, error: null });
+    expect(await getMyApplicationInviteCode(client, 'a@example.com')).toBe('ABCD2345');
+  });
+
+  it('returns null when no approved application matches', async () => {
+    const client = fakeClient({ data: null, error: null });
+    expect(await getMyApplicationInviteCode(client, 'a@example.com')).toBeNull();
+  });
+
+  it('returns null when the matching row has no invite code', async () => {
+    const client = fakeClient({ data: { household_invite_code: null }, error: null });
+    expect(await getMyApplicationInviteCode(client, 'a@example.com')).toBeNull();
+  });
+
+  it('throws when the query errors', async () => {
+    const client = fakeClient({ data: null, error: new Error('boom') });
+    await expect(getMyApplicationInviteCode(client, 'a@example.com')).rejects.toThrow('boom');
   });
 });
