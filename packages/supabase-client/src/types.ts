@@ -133,6 +133,22 @@ export interface Database {
         Update: Partial<Database['public']['Tables']['platform_admins']['Row']>;
         Relationships: [];
       };
+      access_applications: {
+        Row: {
+          id: string;
+          email: string;
+          message: string | null;
+          status: 'pending' | 'approved' | 'rejected';
+          submitted_at: string;
+          reviewed_at: string | null;
+          reviewed_by: string | null;
+        };
+        Insert: Partial<Database['public']['Tables']['access_applications']['Row']> & {
+          email: string;
+        };
+        Update: Partial<Database['public']['Tables']['access_applications']['Row']>;
+        Relationships: [];
+      };
     };
     // supabase-js's GenericSchema constraint requires these keys to be present
     // (even empty) for its generic table-typing to activate at all — without
