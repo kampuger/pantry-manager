@@ -40,17 +40,15 @@ Deno.serve(async (req) => {
     return new Response('Method not allowed', { status: 405, headers: corsHeaders });
   }
 
+  // The gateway verifies the JWT signature (verify_jwt is pinned to true in
+  // supabase/config.toml), so the role claim is trustworthy here. We used to
+  // also require the token to equal SUPABASE_SERVICE_ROLE_KEY, but that env
+  // value can drift from the key the cron job sends after an API-key refresh,
+  // which silently 401'd every scheduled run.
   const authHeader = req.headers.get('Authorization');
   const callerRole = decodeJwtRole(authHeader);
   if (callerRole !== 'service_role' && callerRole !== 'authenticated') {
     return new Response('Unauthorized', { status: 401, headers: corsHeaders });
-  }
-
-  if (callerRole === 'service_role') {
-    const token = authHeader!.slice('Bearer '.length);
-    if (token !== SERVICE_ROLE_KEY) {
-      return new Response('Unauthorized', { status: 401, headers: corsHeaders });
-    }
   }
 
   let householdId: string | undefined;

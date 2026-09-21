@@ -1,0 +1,6 @@
+project_id = "PantryManager"
+
+# compute-and-send-reminders trusts the role claim in the caller's JWT, which is
+# only safe while the gateway verifies the signature. Keep this true.
+[functions.compute-and-send-reminders]
+verify_jwt = true
