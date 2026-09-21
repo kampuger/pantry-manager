@@ -1,5 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { buildDigestEmail } from '../../../packages/core/src/notificationDigest.ts';
+import { buildDigestEmail, shouldMarkDigestSent } from '../../../packages/core/src/notificationDigest.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -183,9 +183,17 @@ Deno.serve(async (req) => {
     }
   }
 
-  // Set only after attempting the batch — a crash before this point (e.g.
-  // the reminders/members queries failing) leaves last_digest_sent_date
-  // untouched so a later retry the same day can still send.
+  // Set only once at least one email actually went out — a crash before this
+  // point (e.g. the reminders/members queries failing) or a batch where every
+  // send failed leaves last_digest_sent_date untouched so a later retry the
+  // same day can still send.
+  if (!shouldMarkDigestSent(results)) {
+    return new Response(JSON.stringify({ status: 'send_failed', results }), {
+      status: 502,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
   await admin.from('households').update({ last_digest_sent_date: todayManila }).eq('id', householdId);
 
   return new Response(JSON.stringify({ status: 'sent', results }), {

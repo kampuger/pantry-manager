@@ -29,6 +29,19 @@ function describeDays(days: number): string {
   return `expires in ${days} days`;
 }
 
+export interface DigestSendResult {
+  ok: boolean;
+  error?: string;
+}
+
+// A household's digest counts as sent for the day once at least one recipient
+// actually got it: retrying after a partial failure would email the ones who
+// already received it again, but marking a total failure as sent would silence
+// the household until tomorrow.
+export function shouldMarkDigestSent(results: DigestSendResult[]): boolean {
+  return results.some((result) => result.ok);
+}
+
 export function buildDigestEmail(input: DigestInput): DigestEmail {
   const sorted = [...input.items].sort((a, b) => a.daysUntilExpiry - b.daysUntilExpiry);
   const count = sorted.length;

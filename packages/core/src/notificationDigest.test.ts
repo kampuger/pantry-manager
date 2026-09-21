@@ -1,4 +1,4 @@
-import { buildDigestEmail } from './notificationDigest';
+import { buildDigestEmail, shouldMarkDigestSent } from './notificationDigest';
 
 const NO_REPLY_NOTICE = 'This is an automated message — replies to this email are not monitored.';
 
@@ -78,5 +78,23 @@ describe('buildDigestEmail', () => {
       items: [{ name: 'A', daysUntilExpiry: 1 }],
     });
     expect(withoutIntro.body.endsWith(NO_REPLY_NOTICE)).toBe(true);
+  });
+});
+
+describe('shouldMarkDigestSent', () => {
+  it('is true when every recipient was emailed', () => {
+    expect(shouldMarkDigestSent([{ ok: true }, { ok: true }])).toBe(true);
+  });
+
+  it('is true when only some recipients failed, so the ones who got it are not emailed twice', () => {
+    expect(shouldMarkDigestSent([{ ok: true }, { ok: false, error: 'Resend 422' }])).toBe(true);
+  });
+
+  it('is false when every send failed, so a retry the same day is still possible', () => {
+    expect(shouldMarkDigestSent([{ ok: false, error: 'Resend 401' }, { ok: false, error: 'no email on file' }])).toBe(false);
+  });
+
+  it('is false when no send was attempted', () => {
+    expect(shouldMarkDigestSent([])).toBe(false);
   });
 });
