@@ -43,3 +43,6 @@ next-env.d.ts
 
 # run-web skill driver output
 .claude/skills/run-web/screenshots/
+
+# self-signed dev certs (next dev --experimental-https via mkcert)
+certificates
