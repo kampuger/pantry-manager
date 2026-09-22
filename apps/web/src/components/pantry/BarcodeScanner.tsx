@@ -23,6 +23,7 @@ export function BarcodeScanner({
     let cancelled = false;
     let rafId = 0;
     let stream: MediaStream | null = null;
+    const timeoutIds: NodeJS.Timeout[] = [];
 
     async function start() {
       try {
@@ -42,6 +43,7 @@ export function BarcodeScanner({
           if (cancelled || !videoRef.current) return;
           try {
             const codes = await detector.detect(videoRef.current);
+            if (cancelled) return;
             const code = codes[0]?.rawValue;
             if (code) {
               const now = Date.now();
@@ -49,7 +51,8 @@ export function BarcodeScanner({
               if (!last || last.code !== code || now - last.at > DEDUPE_WINDOW_MS) {
                 lastDetection.current = { code, at: now };
                 setFlash(true);
-                setTimeout(() => setFlash(false), 200);
+                const timeoutId = setTimeout(() => setFlash(false), 200);
+                timeoutIds.push(timeoutId);
                 onDetect(code);
               }
             }
@@ -73,6 +76,7 @@ export function BarcodeScanner({
       cancelled = true;
       cancelAnimationFrame(rafId);
       stream?.getTracks().forEach((track) => track.stop());
+      timeoutIds.forEach((id) => clearTimeout(id));
     };
   }, [onDetect]);
 
