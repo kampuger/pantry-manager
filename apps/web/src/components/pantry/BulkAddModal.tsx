@@ -1,11 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { UNIT_OPTIONS, STORAGE_LOCATION_OPTIONS } from '@pantry/supabase-client';
 import { computeExpiryDate, parseBulkPasteGrid } from '@pantry/core';
 import { formatExpiryDate } from '@pantry/ui';
+import { openFoodFactsProvider } from '@pantry/product-lookup';
 import { useIsMobile } from '@/lib/useIsMobile';
 import { color, radius, cardStyle, inputStyle, buttonStyle } from '@/lib/theme';
+import { BarcodeScanner } from './BarcodeScanner';
 
 export interface BulkItemInput {
   name: string;
@@ -380,6 +382,7 @@ export function BulkAddModal({
   const [rows, setRows] = useState<BulkRow[]>(() => [emptyRow()]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showScanner, setShowScanner] = useState(false);
 
   function updateRow(key: string, changes: Partial<BulkRow>) {
     setRows((prev) => prev.map((row) => (row.key === key ? { ...row, ...changes } : row)));
@@ -392,6 +395,14 @@ export function BulkAddModal({
   function removeRow(key: string) {
     setRows((prev) => (prev.length > 1 ? prev.filter((row) => row.key !== key) : prev));
   }
+
+  const handleBarcodeDetected = useCallback(async (barcode: string) => {
+    const result = await openFoodFactsProvider.lookup(barcode);
+    setRows((prev) => [
+      ...prev,
+      { ...emptyRow(prev[prev.length - 1]), name: result?.name ?? `Unknown item (${barcode})` },
+    ]);
+  }, []);
 
   function handlePasteGrid(startRowIndex: number, startColIndex: number, grid: string[][]) {
     setRows((prev) => {
@@ -467,13 +478,28 @@ export function BulkAddModal({
           <DesktopRows rows={rows} updateRow={updateRow} removeRow={removeRow} onPasteGrid={handlePasteGrid} />
         )}
 
-        <button
-          type="button"
-          onClick={addRow}
-          style={{ ...buttonStyle('secondary'), alignSelf: 'flex-start', padding: '8px 14px', borderRadius: radius.pill }}
-        >
-          + Add row
-        </button>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button
+            type="button"
+            onClick={addRow}
+            style={{ ...buttonStyle('secondary'), alignSelf: 'flex-start', padding: '8px 14px', borderRadius: radius.pill }}
+          >
+            + Add row
+          </button>
+          {isMobile && (
+            <button
+              type="button"
+              onClick={() => setShowScanner(true)}
+              style={{ ...buttonStyle('secondary'), alignSelf: 'flex-start', padding: '8px 14px', borderRadius: radius.pill }}
+            >
+              Scan barcode
+            </button>
+          )}
+        </div>
+
+        {showScanner && (
+          <BarcodeScanner onDetect={handleBarcodeDetected} onClose={() => setShowScanner(false)} />
+        )}
 
         {error && (
           <p
