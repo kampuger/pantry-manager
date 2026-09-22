@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { UNIT_OPTIONS, STORAGE_LOCATION_OPTIONS } from '@pantry/supabase-client';
-import { computeExpiryDate } from '@pantry/core';
+import { computeExpiryDate, parseBulkPasteGrid } from '@pantry/core';
 import { formatExpiryDate } from '@pantry/ui';
 import { useIsMobile } from '@/lib/useIsMobile';
 import { color, radius, cardStyle, inputStyle, buttonStyle } from '@/lib/theme';
@@ -54,6 +54,71 @@ interface RowsProps {
   rows: BulkRow[];
   updateRow: (key: string, changes: Partial<BulkRow>) => void;
   removeRow: (key: string) => void;
+}
+
+const CELL_COLUMNS = ['name', 'quantity', 'unit', 'storageLocation', 'isProduce', 'expirationDate', 'purchasePrice'] as const;
+type CellColumn = (typeof CELL_COLUMNS)[number];
+
+// Applies one pasted cell's raw text to a row, for the fixed column order
+// above. Ambiguous or unparsable values leave the existing cell alone
+// rather than guessing — the user fixes it by hand in the grid afterward.
+function applyPastedCell(row: BulkRow, column: CellColumn, value: string): BulkRow {
+  if (value === '') return row;
+
+  switch (column) {
+    case 'name':
+      return { ...row, name: value };
+    case 'quantity': {
+      const n = Number(value);
+      return { ...row, quantity: Number.isNaN(n) ? '' : String(n) };
+    }
+    case 'unit': {
+      const match = UNIT_OPTIONS.find((u) => u.toLowerCase() === value.toLowerCase());
+      return match ? { ...row, unit: match } : row;
+    }
+    case 'storageLocation': {
+      const match = STORAGE_LOCATION_OPTIONS.find((s) => s.toLowerCase() === value.toLowerCase());
+      return match ? { ...row, storageLocation: match } : row;
+    }
+    case 'isProduce': {
+      const lower = value.toLowerCase();
+      if (lower === 'yes' || lower === 'y' || lower === 'true') {
+        return { ...row, isProduce: true, expirationDate: '' };
+      }
+      if (lower === 'no' || lower === 'n' || lower === 'false') {
+        return { ...row, isProduce: false };
+      }
+      return row;
+    }
+    case 'expirationDate': {
+      if (row.isProduce) return row;
+      return /^\d{4}-\d{2}-\d{2}$/.test(value) ? { ...row, expirationDate: value } : row;
+    }
+    case 'purchasePrice': {
+      const n = Number(value);
+      return { ...row, purchasePrice: Number.isNaN(n) ? '' : String(n) };
+    }
+    default:
+      return row;
+  }
+}
+
+// A single-cell paste (no tabs/commas, one line) is left to the browser's
+// normal paste behavior. Anything bigger is a spreadsheet-style paste: we
+// take over and spread it across the grid starting at the focused cell.
+function handleCellPaste(
+  e: React.ClipboardEvent,
+  rowIndex: number,
+  column: CellColumn,
+  onPasteGrid: (startRowIndex: number, startColIndex: number, grid: string[][]) => void
+) {
+  const text = e.clipboardData.getData('text');
+  if (!text) return;
+  const grid = parseBulkPasteGrid(text);
+  const isSingleCell = grid.length === 1 && grid[0].length === 1;
+  if (grid.length === 0 || isSingleCell) return;
+  e.preventDefault();
+  onPasteGrid(rowIndex, CELL_COLUMNS.indexOf(column), grid);
 }
 
 // Table layout reads fine at desktop widths, but a table wrapped in
@@ -167,7 +232,11 @@ function MobileRows({ rows, updateRow, removeRow }: RowsProps) {
   );
 }
 
-function DesktopRows({ rows, updateRow, removeRow }: RowsProps) {
+interface DesktopRowsProps extends RowsProps {
+  onPasteGrid: (startRowIndex: number, startColIndex: number, grid: string[][]) => void;
+}
+
+function DesktopRows({ rows, updateRow, removeRow, onPasteGrid }: DesktopRowsProps) {
   return (
     <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
@@ -184,12 +253,13 @@ function DesktopRows({ rows, updateRow, removeRow }: RowsProps) {
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
+          {rows.map((row, rowIndex) => (
             <tr key={row.key} style={{ borderBottom: `1px solid ${color.border}` }}>
               <td style={CELL_STYLE}>
                 <input
                   value={row.name}
                   onChange={(e) => updateRow(row.key, { name: e.target.value })}
+                  onPaste={(e) => handleCellPaste(e, rowIndex, 'name', onPasteGrid)}
                   placeholder="e.g. Strawberries"
                   style={{ ...CELL_INPUT_STYLE, minWidth: 150 }}
                 />
@@ -201,6 +271,7 @@ function DesktopRows({ rows, updateRow, removeRow }: RowsProps) {
                   step="any"
                   value={row.quantity}
                   onChange={(e) => updateRow(row.key, { quantity: e.target.value })}
+                  onPaste={(e) => handleCellPaste(e, rowIndex, 'quantity', onPasteGrid)}
                   style={{ ...CELL_INPUT_STYLE, width: 64 }}
                 />
               </td>
@@ -208,6 +279,7 @@ function DesktopRows({ rows, updateRow, removeRow }: RowsProps) {
                 <select
                   value={row.unit}
                   onChange={(e) => updateRow(row.key, { unit: e.target.value })}
+                  onPaste={(e) => handleCellPaste(e, rowIndex, 'unit', onPasteGrid)}
                   style={{ ...CELL_INPUT_STYLE, width: 80 }}
                 >
                   {UNIT_OPTIONS.map((u) => (
@@ -221,6 +293,7 @@ function DesktopRows({ rows, updateRow, removeRow }: RowsProps) {
                 <select
                   value={row.storageLocation}
                   onChange={(e) => updateRow(row.key, { storageLocation: e.target.value })}
+                  onPaste={(e) => handleCellPaste(e, rowIndex, 'storageLocation', onPasteGrid)}
                   style={{ ...CELL_INPUT_STYLE, width: 100 }}
                 >
                   {STORAGE_LOCATION_OPTIONS.map((s) => (
@@ -253,6 +326,7 @@ function DesktopRows({ rows, updateRow, removeRow }: RowsProps) {
                     type="date"
                     value={row.expirationDate}
                     onChange={(e) => updateRow(row.key, { expirationDate: e.target.value })}
+                    onPaste={(e) => handleCellPaste(e, rowIndex, 'expirationDate', onPasteGrid)}
                     style={{ ...CELL_INPUT_STYLE, width: 140 }}
                   />
                 )}
@@ -265,6 +339,7 @@ function DesktopRows({ rows, updateRow, removeRow }: RowsProps) {
                   placeholder="0.00"
                   value={row.purchasePrice}
                   onChange={(e) => updateRow(row.key, { purchasePrice: e.target.value })}
+                  onPaste={(e) => handleCellPaste(e, rowIndex, 'purchasePrice', onPasteGrid)}
                   style={{ ...CELL_INPUT_STYLE, width: 84 }}
                 />
               </td>
@@ -318,6 +393,26 @@ export function BulkAddModal({
     setRows((prev) => (prev.length > 1 ? prev.filter((row) => row.key !== key) : prev));
   }
 
+  function handlePasteGrid(startRowIndex: number, startColIndex: number, grid: string[][]) {
+    setRows((prev) => {
+      const next = [...prev];
+      grid.forEach((gridRow, i) => {
+        const rowIndex = startRowIndex + i;
+        while (rowIndex >= next.length) {
+          next.push(emptyRow(next[next.length - 1]));
+        }
+        let row = next[rowIndex];
+        gridRow.forEach((cellValue, j) => {
+          const column = CELL_COLUMNS[startColIndex + j];
+          if (!column) return; // paste extended past the last known column; ignore extra columns
+          row = applyPastedCell(row, column, cellValue);
+        });
+        next[rowIndex] = row;
+      });
+      return next;
+    });
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -369,7 +464,7 @@ export function BulkAddModal({
         {isMobile ? (
           <MobileRows rows={rows} updateRow={updateRow} removeRow={removeRow} />
         ) : (
-          <DesktopRows rows={rows} updateRow={updateRow} removeRow={removeRow} />
+          <DesktopRows rows={rows} updateRow={updateRow} removeRow={removeRow} onPasteGrid={handlePasteGrid} />
         )}
 
         <button
