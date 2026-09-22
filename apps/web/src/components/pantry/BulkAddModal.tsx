@@ -34,14 +34,14 @@ function nextRowKey(): string {
   return `row-${rowKeySeq}`;
 }
 
-function emptyRow(): BulkRow {
+function emptyRow(previous?: BulkRow): BulkRow {
   return {
     key: nextRowKey(),
     name: '',
     quantity: '1',
-    unit: UNIT_OPTIONS[0],
-    storageLocation: STORAGE_LOCATION_OPTIONS[0],
-    isProduce: true,
+    unit: previous?.unit ?? UNIT_OPTIONS[0],
+    storageLocation: previous?.storageLocation ?? STORAGE_LOCATION_OPTIONS[0],
+    isProduce: previous?.isProduce ?? true,
     expirationDate: '',
     purchasePrice: '',
   };
@@ -311,7 +311,7 @@ export function BulkAddModal({
   }
 
   function addRow() {
-    setRows((prev) => [...prev, emptyRow()]);
+    setRows((prev) => [...prev, emptyRow(prev[prev.length - 1])]);
   }
 
   function removeRow(key: string) {
