@@ -490,7 +490,9 @@ export function BulkAddModal({
       <div>
         <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: color.foreground }}>Add items</h2>
         <p style={{ margin: '4px 0 0', fontSize: 13, color: color.mutedForeground }}>
-          Fill in a row per item — add more rows as you need them, then save them all at once.
+          {isMobile
+            ? 'Fill in a row per item, or use Scan barcode to add items by camera — add more rows as you need them, then save them all at once.'
+            : 'Fill in a row per item, or paste a list from a spreadsheet straight into the grid — add more rows as you need them, then save them all at once.'}
         </p>
       </div>
 
