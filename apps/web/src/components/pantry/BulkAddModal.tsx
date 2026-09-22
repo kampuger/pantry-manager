@@ -1,8 +1,9 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
+import Papa from 'papaparse';
 import { UNIT_OPTIONS, STORAGE_LOCATION_OPTIONS } from '@pantry/supabase-client';
-import { computeExpiryDate, parseBulkPasteGrid } from '@pantry/core';
+import { computeExpiryDate, parseBulkPasteGrid, resolveCsvHeader, CELL_COLUMNS, type CellColumn } from '@pantry/core';
 import { formatExpiryDate } from '@pantry/ui';
 import { openFoodFactsProvider } from '@pantry/product-lookup';
 import { useIsMobile } from '@/lib/useIsMobile';
@@ -60,9 +61,6 @@ interface RowsProps {
   updateRow: (key: string, changes: Partial<BulkRow>) => void;
   removeRow: (key: string) => void;
 }
-
-const CELL_COLUMNS = ['name', 'quantity', 'unit', 'storageLocation', 'isProduce', 'expirationDate', 'purchasePrice'] as const;
-type CellColumn = (typeof CELL_COLUMNS)[number];
 
 // A single paste creating more rows than this would be an accidental paste
 // of a huge block of text (e.g. a whole document) — cap it rather than
@@ -391,6 +389,7 @@ export function BulkAddModal({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showScanner, setShowScanner] = useState(false);
+  const csvInputRef = useRef<HTMLInputElement>(null);
 
   function updateRow(key: string, changes: Partial<BulkRow>) {
     setRows((prev) => prev.map((row) => (row.key === key ? { ...row, ...changes } : row)));
@@ -455,6 +454,43 @@ export function BulkAddModal({
     });
   }
 
+  async function handleCsvUpload(file: File) {
+    setError(null);
+    const text = await file.text();
+    const parsed = Papa.parse<Record<string, string>>(text, { header: true, skipEmptyLines: true });
+
+    const headerColumns = (parsed.meta.fields ?? []).map((header) => [header, resolveCsvHeader(header)] as const);
+    if (!headerColumns.some(([, column]) => column === 'name')) {
+      setError(
+        "Couldn't find a Name column in this CSV — expected a header row with columns like Name, Qty, Unit, Location, Expiry, Price."
+      );
+      return;
+    }
+
+    // Truncation depends on the current row count (CSV rows always append,
+    // unlike paste which targets a specific start position independent of
+    // it), so it's decided here against the render's own `rows` rather than
+    // inside the setRows updater — keeps that updater free of side effects.
+    let records = parsed.data;
+    if (rows.length + records.length > MAX_PASTE_ROWS) {
+      setError(`CSV truncated to ${MAX_PASTE_ROWS} rows total — that's more than fits in one add.`);
+      records = records.slice(0, Math.max(0, MAX_PASTE_ROWS - rows.length));
+    }
+
+    setRows((prev) => {
+      let next = [...prev];
+      for (const record of records) {
+        let row = emptyRow(next[next.length - 1]);
+        for (const [header, column] of headerColumns) {
+          if (!column) continue;
+          row = applyPastedCell(row, column, (record[header] ?? '').trim());
+        }
+        next = [...next, row];
+      }
+      return next;
+    });
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -499,8 +535,8 @@ export function BulkAddModal({
         <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: color.foreground }}>Add items</h2>
         <p style={{ margin: '4px 0 0', fontSize: 13, color: color.mutedForeground }}>
           {isMobile
-            ? 'Fill in a row per item, or use Scan barcode to add items by camera — add more rows as you need them, then save them all at once.'
-            : 'Fill in a row per item, or paste a list from a spreadsheet straight into the grid — add more rows as you need them, then save them all at once.'}
+            ? 'Fill in a row per item, upload a CSV, or use Scan barcode to add items by camera — add more rows as you need them, then save them all at once.'
+            : 'Fill in a row per item, upload a CSV, or paste a list from a spreadsheet straight into the grid — add more rows as you need them, then save them all at once.'}
         </p>
       </div>
 
@@ -511,10 +547,24 @@ export function BulkAddModal({
           <DesktopRows rows={rows} updateRow={updateRow} removeRow={removeRow} onPasteGrid={handlePasteGrid} />
         )}
 
-        <div style={{ display: 'flex', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           <button type="button" onClick={addRow} style={TOOLBAR_BUTTON_STYLE}>
             + Add row
           </button>
+          <button type="button" onClick={() => csvInputRef.current?.click()} style={TOOLBAR_BUTTON_STYLE}>
+            Upload CSV
+          </button>
+          <input
+            ref={csvInputRef}
+            type="file"
+            accept=".csv,text/csv"
+            style={{ display: 'none' }}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = ''; // reset so selecting the same file again still fires onChange
+              if (file) void handleCsvUpload(file);
+            }}
+          />
           {isMobile && (
             <button type="button" onClick={() => setShowScanner(true)} style={TOOLBAR_BUTTON_STYLE}>
               Scan barcode
