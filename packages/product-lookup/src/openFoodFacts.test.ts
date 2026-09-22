@@ -65,7 +65,7 @@ describe('openFoodFactsProvider', () => {
     expect(result).toEqual({ name: 'Generic Rice' });
   });
 
-  it('falls back to the compressed UPC-E code when the expanded UPC-A form misses (real-world case: Canada Dry Strawberry Ginger Ale, printed UPC-E 07846001)', async () => {
+  it('falls back to the compressed UPC-E code when the expanded 12-digit UPC-A form misses (real-world case: Canada Dry Strawberry Ginger Ale, printed UPC-E 07846001)', async () => {
     const fetchMock = jest
       .fn()
       .mockResolvedValueOnce({ ok: true, json: async () => ({ status: 0 }) })
@@ -80,6 +80,24 @@ describe('openFoodFactsProvider', () => {
     expect(result).toEqual({ name: 'Strawberry ginger ale', brand: 'Canada Dry' });
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls[0][0]).toContain('078000004601');
+    expect(fetchMock.mock.calls[1][0]).toContain('07846001');
+  });
+
+  it('falls back to the compressed UPC-E code when the expanded 13-digit zero-padded EAN-13 form misses (same product, as actually reported by the scanner: "0078000004601")', async () => {
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ status: 0 }) })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ status: 1, product: { product_name: 'Strawberry ginger ale', brands: 'Canada Dry' } }),
+      });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const result = await openFoodFactsProvider.lookup('0078000004601');
+
+    expect(result).toEqual({ name: 'Strawberry ginger ale', brand: 'Canada Dry' });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0][0]).toContain('0078000004601');
     expect(fetchMock.mock.calls[1][0]).toContain('07846001');
   });
 

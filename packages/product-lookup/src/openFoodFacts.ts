@@ -23,14 +23,24 @@ async function fetchByCode(code: string): Promise<ProductLookupResult | null> {
 }
 
 // Some barcode scanners (including this app's) report a UPC-E-encoded
-// barcode as its expanded 12-digit UPC-A form rather than the original
-// 8-digit compressed code. Open Food Facts entries for these products are
-// frequently indexed under the original compressed code only (e.g. a can
-// printed with UPC-E "07846001" is stored as "07846001", not the expanded
-// "078000004601"), so an expanded-only lookup can miss a product that's
-// genuinely in the database. This reverses the standard UPC-E expansion
-// (zero-suppression) rules to recover the likely original 8-digit code,
-// returning null when upcA isn't a plausible compression of anything.
+// barcode as its expanded form rather than the original 8-digit compressed
+// code — either as a 12-digit UPC-A, or as that UPC-A zero-padded out to a
+// 13-digit EAN-13 (a real can was observed decoding to "0078000004601").
+// Open Food Facts entries for these products are frequently indexed under
+// the original compressed code only (e.g. a can printed with UPC-E
+// "07846001" is stored as "07846001", not either expanded form), so an
+// expanded-only lookup can miss a product that's genuinely in the
+// database. This strips a wrapping EAN-13 zero (if present) to recover the
+// 12-digit UPC-A, returning null for anything that isn't 12 or 13 digits.
+function toUpcA(code: string): string | null {
+  if (/^\d{12}$/.test(code)) return code;
+  if (/^0\d{12}$/.test(code)) return code.slice(1);
+  return null;
+}
+
+// Reverses the standard UPC-E expansion (zero-suppression) rules to
+// recover the likely original 8-digit code, returning null when upcA isn't
+// a plausible compression of anything.
 function upcAToUpcE(upcA: string): string | null {
   if (!/^\d{12}$/.test(upcA)) return null;
   const numberSystem = upcA[0];
@@ -60,7 +70,8 @@ export const openFoodFactsProvider: IProductLookupProvider = {
       const hit = await fetchByCode(barcode);
       if (hit) return hit;
 
-      const upcE = upcAToUpcE(barcode);
+      const upcA = toUpcA(barcode);
+      const upcE = upcA ? upcAToUpcE(upcA) : null;
       if (upcE) return await fetchByCode(upcE);
 
       return null;
