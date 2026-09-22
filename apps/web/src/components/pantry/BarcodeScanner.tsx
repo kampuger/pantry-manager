@@ -2,9 +2,10 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { BarcodeDetector, setZXingModuleOverrides } from 'barcode-detector/ponyfill';
-import { color, radius, cardStyle, buttonStyle, modalOverlayStyle } from '@/lib/theme';
+import { color, radius, shadow, cardStyle, buttonStyle, modalOverlayStyle } from '@/lib/theme';
 
 const DEDUPE_WINDOW_MS = 2000;
+const TOAST_DURATION_MS = 1800;
 const PRODUCT_BARCODE_FORMATS = ['upc_a', 'upc_e', 'ean_13', 'ean_8'] as const;
 
 // Number of consecutive per-frame detect() failures before we treat the
@@ -25,20 +26,27 @@ export function BarcodeScanner({
   onDetect,
   onClose,
 }: {
-  onDetect: (barcode: string) => void;
+  onDetect: (barcode: string) => Promise<string>;
   onClose: () => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const lastDetection = useRef<{ code: string; at: number } | null>(null);
-  const flashTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [flash, setFlash] = useState(false);
+  const [lookingUp, setLookingUp] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     let rafId = 0;
     let stream: MediaStream | null = null;
     let consecutiveFailures = 0;
+    // Detection pauses (see `tick`) from the moment a code is read until its
+    // lookup resolves and its confirmation is shown — this is what stops the
+    // same physical barcode from being read and added twice in a row, on
+    // top of the below code+time dedupe for whatever's still in frame once
+    // detection resumes.
+    let busy = false;
 
     async function start() {
       try {
@@ -64,6 +72,10 @@ export function BarcodeScanner({
 
         const tick = async () => {
           if (cancelled || !videoRef.current) return;
+          if (busy) {
+            rafId = requestAnimationFrame(tick);
+            return;
+          }
           try {
             const codes = await detector.detect(videoRef.current);
             if (cancelled) return;
@@ -74,10 +86,24 @@ export function BarcodeScanner({
               const last = lastDetection.current;
               if (!last || last.code !== code || now - last.at > DEDUPE_WINDOW_MS) {
                 lastDetection.current = { code, at: now };
-                setFlash(true);
-                if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
-                flashTimeoutRef.current = setTimeout(() => setFlash(false), 200);
-                onDetect(code);
+                busy = true;
+                setLookingUp(true);
+                try {
+                  const message = await onDetect(code);
+                  if (!cancelled) {
+                    setToast(message);
+                    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+                    toastTimeoutRef.current = setTimeout(() => {
+                      if (!cancelled) setToast(null);
+                    }, TOAST_DURATION_MS);
+                  }
+                } catch {
+                  // A lookup failure shouldn't strand the scanner paused —
+                  // just resume without a confirmation for this one scan.
+                } finally {
+                  busy = false;
+                  if (!cancelled) setLookingUp(false);
+                }
               }
             }
           } catch {
@@ -110,7 +136,7 @@ export function BarcodeScanner({
       cancelled = true;
       cancelAnimationFrame(rafId);
       stream?.getTracks().forEach((track) => track.stop());
-      if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
+      if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
     };
     // onDetect must stay referentially stable (see BulkAddModal's
     // handleBarcodeDetected) — an unstable reference here would tear down
@@ -135,16 +161,40 @@ export function BarcodeScanner({
               position: 'relative',
               borderRadius: radius.md,
               overflow: 'hidden',
-              border: `2px solid ${flash ? color.primary : color.border}`,
+              border: `2px solid ${lookingUp ? color.accent : color.border}`,
               transition: 'border-color 150ms ease',
             }}
           >
             <video ref={videoRef} muted playsInline style={{ width: '100%', display: 'block' }} />
+
+            {toast && (
+              <div
+                role="status"
+                style={{
+                  position: 'absolute',
+                  left: 12,
+                  right: 12,
+                  bottom: 12,
+                  padding: '10px 14px',
+                  borderRadius: radius.sm,
+                  background: color.successBg,
+                  color: color.success,
+                  fontSize: 13,
+                  fontWeight: 700,
+                  textAlign: 'center',
+                  boxShadow: shadow.raised,
+                }}
+              >
+                ✓ Added: {toast}
+              </div>
+            )}
           </div>
         )}
 
         <p style={{ margin: 0, fontSize: 13, color: color.mutedForeground }}>
-          Point the camera at a barcode. Each scan adds a row — tap Done when you&rsquo;re finished.
+          {lookingUp
+            ? 'Looking up…'
+            : 'Point the camera at a barcode. Each scan adds a row — tap Done when you’re finished.'}
         </p>
       </div>
     </div>

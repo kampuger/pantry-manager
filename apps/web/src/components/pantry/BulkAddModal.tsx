@@ -407,16 +407,24 @@ export function BulkAddModal({
   // Must stay referentially stable (empty deps) — BarcodeScanner's camera
   // effect depends on `onDetect`'s identity, and an unstable reference here
   // would tear down and re-acquire the camera on every parent re-render.
-  const handleBarcodeDetected = useCallback(async (barcode: string) => {
+  const handleBarcodeDetected = useCallback(async (barcode: string): Promise<string> => {
     const result = await openFoodFactsProvider.lookup(barcode);
     // Open Food Facts names are frequently generic/unbranded (e.g. "Whole
     // Milk"), so the brand is often what actually distinguishes a product —
     // combine them when both are present.
-    const name = [result?.brand, result?.name].filter(Boolean).join(' ');
-    setRows((prev) => [
-      ...prev,
-      { ...emptyRow(prev[prev.length - 1]), name: name || `Unknown item (${barcode})` },
-    ]);
+    const resolvedName = [result?.brand, result?.name].filter(Boolean).join(' ');
+    const displayName = resolvedName || `Unknown item (${barcode})`;
+    setRows((prev) => {
+      const last = prev[prev.length - 1];
+      // The modal always starts with (and "+ Add row" always leaves) one
+      // blank scratch row at the end — fill that one first rather than
+      // always appending, so the very first scan doesn't skip row 1.
+      if (last.name.trim() === '') {
+        return [...prev.slice(0, -1), { ...last, name: displayName }];
+      }
+      return [...prev, { ...emptyRow(last), name: displayName }];
+    });
+    return displayName;
   }, []);
 
   function handlePasteGrid(startRowIndex: number, startColIndex: number, grid: string[][]) {
