@@ -10,6 +10,12 @@ export function parseBulkPasteGrid(text: string): string[][] {
     lines.pop();
   }
 
-  const delimiter = lines.some((line) => line.includes('\t')) ? '\t' : ',';
+  const hasTab = lines.some((line) => line.includes('\t'));
+  // Comma-delimiting is only a safe guess for a genuine multi-item list
+  // (multiple lines, no tabs). A single line with no tabs is one pasted
+  // value — splitting it on commas would mangle a product name like
+  // "Hershey's Cocoa, Unsweetened" into two bogus columns.
+  const delimiter = hasTab ? '\t' : lines.length > 1 ? ',' : null;
+  if (delimiter === null) return [[lines[0].trim()]];
   return lines.map((line) => line.split(delimiter).map((cell) => cell.trim()));
 }

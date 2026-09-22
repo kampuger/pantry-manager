@@ -21,7 +21,7 @@ import { ItemForm, type ItemFormValues } from '@/components/pantry/ItemForm';
 import { BulkAddModal, type BulkItemInput } from '@/components/pantry/BulkAddModal';
 import { PantryLocationGroup } from '@/components/pantry/PantryLocationGroup';
 import { NotificationPrefsModal } from '@/components/pantry/NotificationPrefsModal';
-import { color, radius, cardStyle, inputStyle, buttonStyle, badgeStyle } from '@/lib/theme';
+import { color, radius, cardStyle, inputStyle, buttonStyle, badgeStyle, modalOverlayStyle } from '@/lib/theme';
 import { emitNotificationsChanged } from '@/lib/notificationEvents';
 
 type PantryItemRow = Database['public']['Tables']['pantry_items']['Row'];
@@ -32,18 +32,6 @@ const LOCATION_META: Record<string, { icon: string; label: string }> = {
   PANTRY: { icon: '🥫', label: 'Pantry' },
   COUNTER: { icon: '🍽️', label: 'Counter' },
   OTHER: { icon: '📦', label: 'Other' },
-};
-
-const MODAL_OVERLAY_STYLE: React.CSSProperties = {
-  position: 'fixed',
-  inset: 0,
-  background: 'rgba(15, 23, 42, 0.4)',
-  display: 'flex',
-  alignItems: 'flex-start',
-  justifyContent: 'center',
-  padding: '40px 16px',
-  overflowY: 'auto',
-  zIndex: 50,
 };
 
 function ItemCard({ children }: { children: React.ReactNode }) {
@@ -379,12 +367,12 @@ function PantryPageContent() {
             />
           ))}
           {showBulkAdd && (
-            <div style={MODAL_OVERLAY_STYLE}>
+            <div style={modalOverlayStyle(50)}>
               <BulkAddModal onCancel={() => setShowBulkAdd(false)} onSubmit={handleBulkAdd} />
             </div>
           )}
           {editingItem && (
-            <div style={MODAL_OVERLAY_STYLE}>
+            <div style={modalOverlayStyle(50)}>
               <div style={{ maxWidth: 640, width: '100%' }}>
                 <ItemForm
                   mode="edit"

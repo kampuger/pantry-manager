@@ -27,6 +27,10 @@ describe('parseBulkPasteGrid', () => {
     ]);
   });
 
+  it('does not comma-split a single line containing a comma (e.g. a product name)', () => {
+    expect(parseBulkPasteGrid("Hershey's Cocoa, Unsweetened")).toEqual([["Hershey's Cocoa, Unsweetened"]]);
+  });
+
   it('normalizes CRLF line endings', () => {
     expect(parseBulkPasteGrid('Milk\r\nEggs')).toEqual([['Milk'], ['Eggs']]);
   });

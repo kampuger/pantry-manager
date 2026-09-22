@@ -51,6 +51,9 @@ function emptyRow(previous?: BulkRow): BulkRow {
 
 const CELL_STYLE: React.CSSProperties = { padding: '6px 6px' };
 const CELL_INPUT_STYLE: React.CSSProperties = { ...inputStyle, padding: '7px 8px', fontSize: 13 };
+// Shared by both toolbar buttons ("+ Add row" and "Scan barcode") below the
+// grid — both sit in the same flex row, so no alignSelf is needed here.
+const TOOLBAR_BUTTON_STYLE: React.CSSProperties = { ...buttonStyle('secondary'), padding: '8px 14px', borderRadius: radius.pill };
 
 interface RowsProps {
   rows: BulkRow[];
@@ -60,6 +63,11 @@ interface RowsProps {
 
 const CELL_COLUMNS = ['name', 'quantity', 'unit', 'storageLocation', 'isProduce', 'expirationDate', 'purchasePrice'] as const;
 type CellColumn = (typeof CELL_COLUMNS)[number];
+
+// A single paste creating more rows than this would be an accidental paste
+// of a huge block of text (e.g. a whole document) — cap it rather than
+// locking up the tab building thousands of grid rows.
+const MAX_PASTE_ROWS = 200;
 
 // Applies one pasted cell's raw text to a row, for the fixed column order
 // above. Ambiguous or unparsable values leave the existing cell alone
@@ -72,7 +80,7 @@ function applyPastedCell(row: BulkRow, column: CellColumn, value: string): BulkR
       return { ...row, name: value };
     case 'quantity': {
       const n = Number(value);
-      return { ...row, quantity: Number.isNaN(n) ? '' : String(n) };
+      return Number.isNaN(n) ? row : { ...row, quantity: String(n) };
     }
     case 'unit': {
       const match = UNIT_OPTIONS.find((u) => u.toLowerCase() === value.toLowerCase());
@@ -98,7 +106,7 @@ function applyPastedCell(row: BulkRow, column: CellColumn, value: string): BulkR
     }
     case 'purchasePrice': {
       const n = Number(value);
-      return { ...row, purchasePrice: Number.isNaN(n) ? '' : String(n) };
+      return Number.isNaN(n) ? row : { ...row, purchasePrice: String(n) };
     }
     default:
       return row;
@@ -396,15 +404,30 @@ export function BulkAddModal({
     setRows((prev) => (prev.length > 1 ? prev.filter((row) => row.key !== key) : prev));
   }
 
+  // Must stay referentially stable (empty deps) — BarcodeScanner's camera
+  // effect depends on `onDetect`'s identity, and an unstable reference here
+  // would tear down and re-acquire the camera on every parent re-render.
   const handleBarcodeDetected = useCallback(async (barcode: string) => {
     const result = await openFoodFactsProvider.lookup(barcode);
+    // Open Food Facts names are frequently generic/unbranded (e.g. "Whole
+    // Milk"), so the brand is often what actually distinguishes a product —
+    // combine them when both are present.
+    const name = [result?.brand, result?.name].filter(Boolean).join(' ');
     setRows((prev) => [
       ...prev,
-      { ...emptyRow(prev[prev.length - 1]), name: result?.name ?? `Unknown item (${barcode})` },
+      { ...emptyRow(prev[prev.length - 1]), name: name || `Unknown item (${barcode})` },
     ]);
   }, []);
 
   function handlePasteGrid(startRowIndex: number, startColIndex: number, grid: string[][]) {
+    // Truncation only depends on the paste's own shape (not on how many
+    // rows already exist), so it can be decided before touching state —
+    // keeps the setRows updater itself free of side effects.
+    if (startRowIndex + grid.length > MAX_PASTE_ROWS) {
+      setError(`Paste truncated to ${MAX_PASTE_ROWS} rows — that's more than fits in one add.`);
+      grid = grid.slice(0, Math.max(0, MAX_PASTE_ROWS - startRowIndex));
+    }
+
     setRows((prev) => {
       const next = [...prev];
       grid.forEach((gridRow, i) => {
@@ -479,19 +502,11 @@ export function BulkAddModal({
         )}
 
         <div style={{ display: 'flex', gap: 10 }}>
-          <button
-            type="button"
-            onClick={addRow}
-            style={{ ...buttonStyle('secondary'), alignSelf: 'flex-start', padding: '8px 14px', borderRadius: radius.pill }}
-          >
+          <button type="button" onClick={addRow} style={TOOLBAR_BUTTON_STYLE}>
             + Add row
           </button>
           {isMobile && (
-            <button
-              type="button"
-              onClick={() => setShowScanner(true)}
-              style={{ ...buttonStyle('secondary'), alignSelf: 'flex-start', padding: '8px 14px', borderRadius: radius.pill }}
-            >
+            <button type="button" onClick={() => setShowScanner(true)} style={TOOLBAR_BUTTON_STYLE}>
               Scan barcode
             </button>
           )}

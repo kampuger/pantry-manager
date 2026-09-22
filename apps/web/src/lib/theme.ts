@@ -121,6 +121,23 @@ export function badgeStyle(tone: 'success' | 'warning' | 'destructive' | 'muted'
   };
 }
 
+// Full-screen dimmed backdrop shared by every modal in the app (BulkAddModal,
+// ItemForm's edit overlay, BarcodeScanner, …). zIndex is per-caller since
+// modals can stack (e.g. BarcodeScanner opens on top of BulkAddModal).
+export function modalOverlayStyle(zIndex: number): CSSProperties {
+  return {
+    position: 'fixed',
+    inset: 0,
+    background: 'rgba(15, 23, 42, 0.4)',
+    display: 'flex',
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+    padding: '40px 16px',
+    overflowY: 'auto',
+    zIndex,
+  };
+}
+
 export const labelStyle: CSSProperties = {
   display: 'grid',
   gap: 6,
