@@ -6,3 +6,4 @@ export * from './freshness';
 export * from './recipeMatcher';
 export * from './expiry';
 export * from './notificationDigest';
+export * from './bulkPaste';
