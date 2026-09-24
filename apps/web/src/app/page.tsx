@@ -2,7 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { resolveNotifyThreshold, formatPHP, type HouseholdNotifyDefaults } from '@pantry/core';
+import {
+  resolveNotifyThreshold,
+  formatPHP,
+  buildTimelineBuckets,
+  type HouseholdNotifyDefaults,
+  type TimelineCategory,
+} from '@pantry/core';
 import { daysUntil, getExpiryBadgeStatus } from '@pantry/ui';
 import {
   getHouseholdNotificationPrefs,
@@ -28,91 +34,88 @@ const LOCATION_META: Record<string, { icon: string; label: string }> = {
 };
 
 type Granularity = 'daily' | 'weekly' | 'monthly';
-const BUCKET_COUNT = 5;
 
-// Every date computation here stays in UTC-midnight terms to match
-// daysUntil()/formatExpiryDate()'s own convention (see packages/ui) — mixing
-// in local-timezone Date math would make bucket boundaries drift by a day
-// for anyone not sitting at UTC.
-function addUtcDays(base: Date, days: number): Date {
-  return new Date(base.getTime() + days * 24 * 60 * 60 * 1000);
-}
+// Same past/future span regardless of granularity — 3 daily buckets is
+// "this week at a glance", 3 weekly is "this month", 3 monthly is "this
+// quarter", each a reasonable window for its own zoom level.
+const PAST_BUCKETS = 3;
+const FUTURE_BUCKETS = 3;
 
-function shortUtcDate(date: Date): string {
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
-}
+const CATEGORY_ORDER: TimelineCategory[] = ['expiring', 'expired', 'consumed'];
+const CATEGORY_META: Record<TimelineCategory, { label: string; color: string }> = {
+  expiring: { label: 'Expiring', color: color.accent },
+  expired: { label: 'Expired', color: color.destructive },
+  consumed: { label: 'Consumed', color: color.success },
+};
 
 function formatInviteExpiry(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-function buildBucketLabels(granularity: Granularity, todayUtc: Date): string[] {
-  if (granularity === 'daily') {
-    return Array.from({ length: BUCKET_COUNT }, (_, i) => {
-      if (i === 0) return 'Today';
-      if (i === 1) return 'Tomorrow';
-      return shortUtcDate(addUtcDays(todayUtc, i));
+// How many days back a "Consumed" fetch needs to cover the oldest bucket
+// this granularity can show — generously rounded up per unit since it only
+// widens the query, never narrows which rows land in a bucket (buildTimelineBuckets
+// drops anything outside the actual past/future window regardless).
+function consumedLookbackDays(granularity: Granularity): number {
+  if (granularity === 'daily') return PAST_BUCKETS;
+  if (granularity === 'weekly') return PAST_BUCKETS * 7;
+  return PAST_BUCKETS * 31;
+}
+
+function ExpiryChart({ items, householdId }: { items: PantryItemRow[]; householdId: string }) {
+  const [granularity, setGranularity] = useState<Granularity>('daily');
+  const [selected, setSelected] = useState<Set<TimelineCategory>>(() => new Set(CATEGORY_ORDER));
+  const [consumedDates, setConsumedDates] = useState<string[]>([]);
+  const wantsConsumed = selected.has('consumed');
+
+  useEffect(() => {
+    if (!wantsConsumed) return;
+    const sinceIso = new Date(Date.now() - consumedLookbackDays(granularity) * 24 * 60 * 60 * 1000).toISOString();
+    supabase
+      .from('inventory_movement_logs')
+      .select('occurred_at')
+      .eq('household_id', householdId)
+      .eq('event_type', 'CONSUMED')
+      .gte('occurred_at', sinceIso)
+      .then(({ data, error }) => {
+        if (!error) setConsumedDates((data ?? []).map((row) => row.occurred_at.slice(0, 10)));
+      });
+  }, [householdId, granularity, wantsConsumed]);
+
+  const expiringDates: string[] = [];
+  const expiredDates: string[] = [];
+  for (const item of items) {
+    if (!item.expiration_date) continue;
+    const days = daysUntil(item.expiration_date);
+    if (days === null) continue;
+    (days >= 0 ? expiringDates : expiredDates).push(item.expiration_date.slice(0, 10));
+  }
+
+  const buckets = buildTimelineBuckets({
+    granularity,
+    todayIso: new Date().toISOString().slice(0, 10),
+    pastBucketCount: PAST_BUCKETS,
+    futureBucketCount: FUTURE_BUCKETS,
+    dates: { expiring: expiringDates, expired: expiredDates, consumed: consumedDates },
+  });
+
+  const activeCategories = CATEGORY_ORDER.filter((c) => selected.has(c));
+  const max = Math.max(1, ...buckets.flatMap((b) => activeCategories.map((c) => b.counts[c])));
+  const isEmpty = activeCategories.length === 0 || buckets.every((b) => activeCategories.every((c) => b.counts[c] === 0));
+
+  function toggleCategory(category: TimelineCategory) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(category)) next.delete(category);
+      else next.add(category);
+      return next;
     });
   }
-  if (granularity === 'weekly') {
-    return Array.from({ length: BUCKET_COUNT }, (_, i) =>
-      i === 0 ? 'This week' : `Wk of ${shortUtcDate(addUtcDays(todayUtc, i * 7))}`
-    );
-  }
-  return Array.from({ length: BUCKET_COUNT }, (_, i) => {
-    const monthDate = new Date(Date.UTC(todayUtc.getUTCFullYear(), todayUtc.getUTCMonth() + i, 1));
-    const label = monthDate.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' });
-    return monthDate.getUTCFullYear() === todayUtc.getUTCFullYear()
-      ? label
-      : `${label} '${String(monthDate.getUTCFullYear()).slice(2)}`;
-  });
-}
-
-interface ExpiryBucket {
-  label: string;
-  count: number;
-}
-
-// Forward-looking only (already-expired items are covered by the "Expiring/
-// Expired Items" KPI card above) — buckets 0..4 cover the next 5 days, 5
-// weeks, or 5 months depending on granularity.
-function buildExpiryBuckets(items: PantryItemRow[], granularity: Granularity): ExpiryBucket[] {
-  const todayUtc = new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`);
-  const currentMonthIndex = todayUtc.getUTCFullYear() * 12 + todayUtc.getUTCMonth();
-  const counts = Array(BUCKET_COUNT).fill(0);
-
-  for (const item of items) {
-    const days = daysUntil(item.expiration_date);
-    if (days === null || days < 0) continue;
-
-    let bucketIndex: number | null = null;
-    if (granularity === 'daily') {
-      if (days < BUCKET_COUNT) bucketIndex = days;
-    } else if (granularity === 'weekly') {
-      const week = Math.floor(days / 7);
-      if (week < BUCKET_COUNT) bucketIndex = week;
-    } else {
-      const expDate = new Date(`${item.expiration_date!.slice(0, 10)}T00:00:00Z`);
-      const diff = expDate.getUTCFullYear() * 12 + expDate.getUTCMonth() - currentMonthIndex;
-      if (diff >= 0 && diff < BUCKET_COUNT) bucketIndex = diff;
-    }
-    if (bucketIndex !== null) counts[bucketIndex]++;
-  }
-
-  const labels = buildBucketLabels(granularity, todayUtc);
-  return counts.map((count, i) => ({ label: labels[i], count }));
-}
-
-function ExpiryChart({ items }: { items: PantryItemRow[] }) {
-  const [granularity, setGranularity] = useState<Granularity>('daily');
-  const buckets = buildExpiryBuckets(items, granularity);
-  const max = Math.max(1, ...buckets.map((b) => b.count));
-  const isEmpty = buckets.every((b) => b.count === 0);
 
   return (
     <section style={{ ...cardStyle, padding: 20 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
-        <h2 style={{ margin: 0, fontSize: 16 }}>Items expiring soon</h2>
+        <h2 style={{ margin: 0, fontSize: 16 }}>Pantry timeline</h2>
         <div style={{ display: 'flex', gap: 6 }}>
           {(['daily', 'weekly', 'monthly'] as const).map((g) => (
             <button
@@ -126,24 +129,66 @@ function ExpiryChart({ items }: { items: PantryItemRow[] }) {
         </div>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 16, height: 160, marginTop: 24, padding: '0 4px' }}>
+      <div style={{ display: 'flex', gap: 6, marginTop: 12 }}>
+        {CATEGORY_ORDER.map((category) => {
+          const isOn = selected.has(category);
+          const meta = CATEGORY_META[category];
+          return (
+            <button
+              key={category}
+              onClick={() => toggleCategory(category)}
+              style={{
+                ...buttonStyle('secondary'),
+                padding: '5px 12px',
+                fontSize: 12,
+                borderColor: isOn ? meta.color : color.border,
+                color: isOn ? meta.color : color.mutedForeground,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
+              <span style={{ width: 8, height: 8, borderRadius: '50%', background: isOn ? meta.color : color.border }} />
+              {meta.label}
+            </button>
+          );
+        })}
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 16, height: 160, marginTop: 24, padding: '0 4px', overflowX: 'auto' }}>
         {buckets.map((bucket) => (
           <div
-            key={bucket.label}
-            style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, height: '100%', justifyContent: 'flex-end' }}
+            key={bucket.offset}
+            style={{ flex: '0 0 auto', minWidth: 15 * Math.max(activeCategories.length, 1) + 24, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, height: '100%', justifyContent: 'flex-end' }}
           >
-            <span style={{ fontSize: 13, fontWeight: 700, color: color.foreground }}>{bucket.count}</span>
-            <div
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 110 }}>
+              {activeCategories.map((category) => {
+                const count = bucket.counts[category];
+                return (
+                  <div key={category} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: '100%', gap: 4 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: color.foreground }}>{count}</span>
+                    <div
+                      style={{
+                        width: 14,
+                        height: `${Math.max((count / max) * 100, count > 0 ? 6 : 2)}%`,
+                        background: count > 0 ? CATEGORY_META[category].color : color.border,
+                        borderRadius: '4px 4px 0 0',
+                        transition: 'height 200ms ease',
+                      }}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+            <span
               style={{
-                width: '100%',
-                maxWidth: 48,
-                height: `${Math.max((bucket.count / max) * 100, bucket.count > 0 ? 6 : 2)}%`,
-                background: bucket.count > 0 ? color.accent : color.border,
-                borderRadius: '6px 6px 0 0',
-                transition: 'height 200ms ease',
+                fontSize: 11,
+                fontWeight: bucket.offset === 0 ? 700 : 400,
+                color: bucket.offset === 0 ? color.foreground : color.mutedForeground,
+                textAlign: 'center',
+                whiteSpace: 'nowrap',
               }}
-            />
-            <span style={{ fontSize: 11, color: color.mutedForeground, textAlign: 'center', whiteSpace: 'nowrap' }}>
+            >
               {bucket.label}
             </span>
           </div>
@@ -152,7 +197,7 @@ function ExpiryChart({ items }: { items: PantryItemRow[] }) {
 
       {isEmpty && (
         <p style={{ marginTop: 12, marginBottom: 0, fontSize: 13, color: color.mutedForeground }}>
-          Nothing expiring in this window.
+          {activeCategories.length === 0 ? 'Pick at least one filter above to see the timeline.' : 'Nothing in this window.'}
         </p>
       )}
     </section>
@@ -390,7 +435,7 @@ export default function DashboardPage() {
         ))}
       </section>
 
-      <ExpiryChart items={items} />
+      <ExpiryChart items={items} householdId={membership.householdId} />
 
       <LocationSummary items={items} />
     </div>
