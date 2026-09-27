@@ -21,16 +21,19 @@ const PRICE_PATTERN = /(?:[$₱]\s*)?(\d{1,3}(?:[,.]\d{3})*|\d+)[.,](\d{2})\s*[A
 // Matches a tabular "Qty  Code  UnitPrice  Amount" line — some POS receipts
 // (found via a live test — a Philippine supermarket receipt) print the
 // product NAME on its own line, then quantity/barcode/unit-price/line-total
-// on the next. Group 1 is the quantity; groups 2/3 are the unit price's
-// integer/decimal parts. The trailing Amount column is matched but not
-// captured — it's qty × unit price (a line subtotal), not an independent
-// price, so using it directly would misreport a multi-unit line's per-item
-// cost (e.g. 6 units for ₱132.00 total is ₱22.00 each, not ₱132.00 each).
+// on the next. Group 1 is the quantity; groups 2/3 are the AMOUNT (the last
+// column, qty × unit price) — the leading UnitPrice column is matched but
+// not captured. This app's purchasePrice field represents the total paid
+// for a pantry row, not a per-unit rate (confirmed against how the
+// dashboard sums it: `items.reduce((sum, item) => sum + item.purchase_price)`,
+// no multiplication by quantity), so Amount is the correct value to store,
+// not UnitPrice — using UnitPrice would understate total spend by a factor
+// of quantity for any multi-unit line.
 // The gap between qty and the code tolerates OCR noise beyond plain
 // whitespace — a real scan produced both a stray quote right after the qty
 // digit ('4" 4800163001045 ...') and a missing space entirely, merged with
 // an underscore ('4_A800024575250 ...').
-const DATA_LINE_PATTERN = /^(\d+)[\s_'"]*\S+\s+(\d{1,3}(?:[,.]\d{3})*|\d+)[.,](\d{2})\s+(?:\d{1,3}(?:[,.]\d{3})*|\d+)[.,]\d{2}\s*$/;
+const DATA_LINE_PATTERN = /^(\d+)[\s_'"]*\S+\s+(?:\d{1,3}(?:[,.]\d{3})*|\d+)[.,]\d{2}\s+(\d{1,3}(?:[,.]\d{3})*|\d+)[.,](\d{2})\s*$/;
 
 const DENYLIST_KEYWORDS = [
   'total',

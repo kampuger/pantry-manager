@@ -77,9 +77,13 @@ describe('parseReceiptText', () => {
     expect(parseReceiptText(text)).toEqual([{ name: "CUPPKEYK YEMA TOPPS 10'S", price: 56.5, quantity: 1 }]);
   });
 
-  it('uses the unit price, not the line total, for a multi-quantity stitched line', () => {
+  it('uses the line total (Amount), not the unit price, for a multi-quantity stitched line', () => {
+    // purchasePrice represents the total paid for the whole row (matches
+    // how the dashboard sums it, with no multiplication by quantity), so
+    // Amount is correct here — UnitPrice would understate the real cost by
+    // a factor of quantity for anything bought more than one of.
     const text = 'ARGENTINA MEAT LOAF TOCINO 170G\n6   748485801445                   22.00    132.00';
-    expect(parseReceiptText(text)).toEqual([{ name: 'ARGENTINA MEAT LOAF TOCINO 170G', price: 22.0, quantity: 6 }]);
+    expect(parseReceiptText(text)).toEqual([{ name: 'ARGENTINA MEAT LOAF TOCINO 170G', price: 132.0, quantity: 6 }]);
   });
 
   it('does not stitch a name-only line to a following line that is not a valid data line', () => {
@@ -101,7 +105,7 @@ describe('parseReceiptText', () => {
     ].join('\n');
     expect(parseReceiptText(text)).toEqual([
       { name: 'ITEM ONE', price: 10.0, quantity: 1 },
-      { name: 'ITEM TWO', price: 5.0, quantity: 2 },
+      { name: 'ITEM TWO', price: 10.0, quantity: 2 },
     ]);
   });
 
@@ -116,11 +120,11 @@ describe('parseReceiptText', () => {
   it('tolerates OCR noise in the gap between quantity and code on a data line', () => {
     // A stray quote mark right after the qty digit, before the whitespace.
     const withStrayQuote = 'LIGO MACKEREL RED 155G\n4" 4800163001045 19.75 79.00';
-    expect(parseReceiptText(withStrayQuote)).toEqual([{ name: 'LIGO MACKEREL RED 155G', price: 19.75, quantity: 4 }]);
+    expect(parseReceiptText(withStrayQuote)).toEqual([{ name: 'LIGO MACKEREL RED 155G', price: 79.0, quantity: 4 }]);
 
     // No whitespace at all between qty and code — OCR merged them with an underscore.
     const noGap = 'DM FOUR SEASONS 1LT\n4_A800024575250 71.50 286.00';
-    expect(parseReceiptText(noGap)).toEqual([{ name: 'DM FOUR SEASONS 1LT', price: 71.5, quantity: 4 }]);
+    expect(parseReceiptText(noGap)).toEqual([{ name: 'DM FOUR SEASONS 1LT', price: 286.0, quantity: 4 }]);
   });
 
   it('extracts every item from a full real-world receipt scan, noisy OCR included', () => {
@@ -177,16 +181,24 @@ describe('parseReceiptText', () => {
     // deletes the row by hand, same as any other wrong extraction.
     expect(parseReceiptText(text)).toEqual([
       { name: "CUPPKEYK YEMA TOPPS 10°S,", price: 56.5, quantity: 1 },
-      { name: 'ARGENTINA MEAT LOAF TOCTNO 1706', price: 22.0, quantity: 4 },
-      { name: 'LIBO MACKEREL RED 1555', price: 19.75, quantity: 4 },
-      { name: 'ARGENTINA CORNED BEEF 1755', price: 37.0, quantity: 7 },
-      { name: 'SAN MARINO CORNED TUN SPANISH STYLE i50', price: 32.25, quantity: 6 },
+      { name: 'ARGENTINA MEAT LOAF TOCTNO 1706', price: 132.0, quantity: 4 },
+      { name: 'LIBO MACKEREL RED 1555', price: 79.0, quantity: 4 },
+      { name: 'ARGENTINA CORNED BEEF 1755', price: 259.0, quantity: 7 },
+      { name: 'SAN MARINO CORNED TUN SPANISH STYLE i50', price: 193.5, quantity: 6 },
       { name: 'I 29.00', price: 203 },
       { name: '7:', price: 75 },
-      { name: 'ARGENTINA SEBY LOAF 1505+" Ha', price: 19.25, quantity: 5 },
-      { name: 'DN FOUR SEASONS 1LT a:', price: 71.5, quantity: 4 },
-      { name: "*2'S SELECTA FORTIFIED MILK 1L SAVE Pis", price: 120.0, quantity: 3 },
-      { name: 'PRINGLES ORIGINAL 12X26', price: 24.75, quantity: 12 },
+      // Amount (91.25) happens to sidestep this line's OCR-misread unit
+      // price (19.25 instead of the printed 18.25) entirely, since the
+      // parser never reads UnitPrice at all — a nice side benefit of using
+      // the total column, not something specifically engineered for.
+      { name: 'ARGENTINA SEBY LOAF 1505+" Ha', price: 91.25, quantity: 5 },
+      { name: 'DN FOUR SEASONS 1LT a:', price: 286.0, quantity: 4 },
+      { name: "*2'S SELECTA FORTIFIED MILK 1L SAVE Pis", price: 360.0, quantity: 3 },
+      // This line's own Amount OCR'd as "21.00", wildly inconsistent with
+      // 12 x 24.75 — reflects real OCR noise, not a parser bug (no
+      // subtotal/total cross-checking is in scope, per the design's
+      // explicit non-goals).
+      { name: 'PRINGLES ORIGINAL 12X26', price: 21.0, quantity: 12 },
     ]);
   });
 
@@ -221,9 +233,9 @@ describe('parseReceiptText', () => {
 
     expect(parseReceiptText(text)).toEqual([
       { name: "CUPPKEYK YEMA TOPPS 10'S", price: 56.5, quantity: 1 },
-      { name: 'ARGENTINA MEAT LOAF TOCINO 170G', price: 22.0, quantity: 6 },
-      { name: 'LIGO MACKEREL RED 155G', price: 19.75, quantity: 4 },
-      { name: 'ARGENTINA CORNED BEEF 175G', price: 37.0, quantity: 7 },
+      { name: 'ARGENTINA MEAT LOAF TOCINO 170G', price: 132.0, quantity: 6 },
+      { name: 'LIGO MACKEREL RED 155G', price: 79.0, quantity: 4 },
+      { name: 'ARGENTINA CORNED BEEF 175G', price: 259.0, quantity: 7 },
     ]);
   });
 
