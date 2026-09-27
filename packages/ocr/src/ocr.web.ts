@@ -10,7 +10,7 @@
 // tesseract.js / tesseract.js-core dependencies at their currently-pinned
 // version (5.1.1). If those deps are ever upgraded, re-copy the assets —
 // a version mismatch surfaces as a confusing runtime failure, not a build error.
-import { createWorker, type Worker } from 'tesseract.js';
+import { createWorker, PSM, type Worker } from 'tesseract.js';
 import type { IOcrProvider, OcrInput, OcrResult } from './types';
 
 // Memoize the in-flight promise (not the resolved worker) so concurrent
@@ -22,15 +22,29 @@ let workerPromise: Promise<Worker> | null = null;
 // deliberate tradeoff, not an oversight.
 async function getWorker(): Promise<Worker> {
   if (!workerPromise) {
-    workerPromise = createWorker('eng', 1, {
-      workerPath: '/tesseract/worker.min.js',
-      // Directory form (no filename) lets tesseract.js's own getCore.js do
-      // SIMD feature detection at runtime and pick tesseract-core-simd-lstm
-      // or tesseract-core-lstm accordingly. Both must be present under
-      // apps/web/public/tesseract/.
-      corePath: '/tesseract',
-      langPath: '/tesseract',
-    });
+    workerPromise = (async () => {
+      const worker = await createWorker('eng', 1, {
+        workerPath: '/tesseract/worker.min.js',
+        // Directory form (no filename) lets tesseract.js's own getCore.js do
+        // SIMD feature detection at runtime and pick tesseract-core-simd-lstm
+        // or tesseract-core-lstm accordingly. Both must be present under
+        // apps/web/public/tesseract/.
+        corePath: '/tesseract',
+        langPath: '/tesseract',
+      });
+      // The default page-segmentation mode (AUTO) runs full layout analysis,
+      // which on tabular receipts (a vertical rule between the description
+      // and price columns) tends to misread the rule/border as stray
+      // characters injected at the start of each line. SINGLE_BLOCK treats
+      // the whole image as one block of uniform text and reads it line by
+      // line without that layout analysis — found via a live test on a
+      // receipt where AUTO produced garbage prefixes ("Ta ", "AN ", "| ")
+      // on every item line. This is the only OCR call site in the app
+      // (receipt scanning), so it's safe to set globally rather than
+      // per-call.
+      await worker.setParameters({ tessedit_pageseg_mode: PSM.SINGLE_BLOCK });
+      return worker;
+    })();
   }
   return workerPromise;
 }
