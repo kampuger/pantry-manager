@@ -6,11 +6,17 @@ export interface ParsedReceiptLine {
 }
 
 // Group 1 captures the integer part, which may include thousands separators
-// (comma, period, or space, in groups of exactly 3 digits) — the LAST `.`/`,`
-// before group 2 is treated as the decimal point. An optional trailing
-// alphabetic tax-status code (e.g. "4.99 T" or "4.99TFA" — real receipts use
-// anywhere from one to a few letters) is allowed before the end of the line.
-const PRICE_PATTERN = /(?:[$₱]\s*)?(\d{1,3}(?:[,.\s]\d{3})*|\d+)[.,](\d{2})\s*[A-Za-z]*\s*$/;
+// (comma or period, in groups of exactly 3 digits) — the LAST `.`/`,` before
+// group 2 is treated as the decimal point. Deliberately NOT including bare
+// whitespace as a thousands separator (unlike a comma/period): a receipt
+// line with two independent space-separated numbers — e.g. a garbled data
+// line missing its code column, "29.00 203.00" — would otherwise let this
+// pattern fuse fragments of BOTH numbers into one fake value (found via a
+// live test: "I 29.00 203.00" parsed as a single ~200203 price). An
+// optional trailing alphabetic tax-status code (e.g. "4.99 T" or "4.99TFA"
+// — real receipts use anywhere from one to a few letters) is allowed before
+// the end of the line.
+const PRICE_PATTERN = /(?:[$₱]\s*)?(\d{1,3}(?:[,.]\d{3})*|\d+)[.,](\d{2})\s*[A-Za-z]*\s*$/;
 
 // Matches a tabular "Qty  Code  UnitPrice  Amount" line — some POS receipts
 // (found via a live test — a Philippine supermarket receipt) print the
@@ -20,7 +26,11 @@ const PRICE_PATTERN = /(?:[$₱]\s*)?(\d{1,3}(?:[,.\s]\d{3})*|\d+)[.,](\d{2})\s*
 // captured — it's qty × unit price (a line subtotal), not an independent
 // price, so using it directly would misreport a multi-unit line's per-item
 // cost (e.g. 6 units for ₱132.00 total is ₱22.00 each, not ₱132.00 each).
-const DATA_LINE_PATTERN = /^(\d+)\s+\S+\s+(\d{1,3}(?:[,.\s]\d{3})*|\d+)[.,](\d{2})\s+(?:\d{1,3}(?:[,.\s]\d{3})*|\d+)[.,]\d{2}\s*$/;
+// The gap between qty and the code tolerates OCR noise beyond plain
+// whitespace — a real scan produced both a stray quote right after the qty
+// digit ('4" 4800163001045 ...') and a missing space entirely, merged with
+// an underscore ('4_A800024575250 ...').
+const DATA_LINE_PATTERN = /^(\d+)[\s_'"]*\S+\s+(\d{1,3}(?:[,.]\d{3})*|\d+)[.,](\d{2})\s+(?:\d{1,3}(?:[,.]\d{3})*|\d+)[.,]\d{2}\s*$/;
 
 const DENYLIST_KEYWORDS = [
   'total',
@@ -48,7 +58,7 @@ function stripFillCharacters(name: string): string {
 }
 
 function stripSeparators(digits: string): string {
-  return digits.replace(/[,.\s]/g, '');
+  return digits.replace(/[,.]/g, '');
 }
 
 export function parseReceiptText(rawText: string): ParsedReceiptLine[] {

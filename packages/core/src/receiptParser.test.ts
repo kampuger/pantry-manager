@@ -105,6 +105,91 @@ describe('parseReceiptText', () => {
     ]);
   });
 
+  it('does not fuse two independent space-separated numbers into one price', () => {
+    // A garbled data line (missing its code/barcode column) with two
+    // unrelated prices separated only by a space used to get misread as one
+    // thousands-grouped number ("00 203" -> 200203.00). The line-total
+    // ("203.00", the trailing number) is what should be extracted instead.
+    expect(parseReceiptText('I 29.00 203.00')).toEqual([{ name: 'I 29.00', price: 203 }]);
+  });
+
+  it('tolerates OCR noise in the gap between quantity and code on a data line', () => {
+    // A stray quote mark right after the qty digit, before the whitespace.
+    const withStrayQuote = 'LIGO MACKEREL RED 155G\n4" 4800163001045 19.75 79.00';
+    expect(parseReceiptText(withStrayQuote)).toEqual([{ name: 'LIGO MACKEREL RED 155G', price: 19.75, quantity: 4 }]);
+
+    // No whitespace at all between qty and code — OCR merged them with an underscore.
+    const noGap = 'DM FOUR SEASONS 1LT\n4_A800024575250 71.50 286.00';
+    expect(parseReceiptText(noGap)).toEqual([{ name: 'DM FOUR SEASONS 1LT', price: 71.5, quantity: 4 }]);
+  });
+
+  it('extracts every item from a full real-world receipt scan, noisy OCR included', () => {
+    // The actual raw OCR text (character-for-character) Tesseract produced
+    // from a real photo of a Philippine supermarket receipt, including its
+    // misreads (garbled names, a stray quote, a missing gap, digit swaps).
+    // This locks in behavior against a real scan, not an idealized one.
+    const text = [
+      'FRIENDSHIP SUPERMARKET INC.',
+      'Barangay Matias Poblacion',
+      'Talavera, Nueva Ecija',
+      'TINA 246-226-150-007 UAT',
+      'CTC7904606 NINI20285871',
+      '',
+      'CASHIER : WICHELLE M. #077',
+      '07/27/2021 13:51:38',
+      '0000345320 ORBO0S-000333459',
+      'Oty Description Price Amount',
+      'VAT SALES',
+      "CUPPKEYK YEMA TOPPS 10°S,",
+      '1 4800092555008 56.50 56.50',
+      'ARGENTINA MEAT LOAF TOCTNO 1706',
+      '4 7489BSBOIAS 22.00 132.00',
+      'LIBO MACKEREL RED 1555',
+      '4" 4800163001045 19.75 79.00',
+      'ARGENTINA CORNED BEEF 1755',
+      '7 708483800011 37.00 259.00',
+      'SAN MARINO CORNED TUN SPANISH STYLE i50',
+      '6 480029043587 32.25 193.50',
+      'HK Rsess zo',
+      'I 29.00 203.00',
+      'rn a =',
+      '7: 75.00',
+      'ARGENTINA SEBY LOAF 1505+" Ha',
+      '5 "749483801490 19.25 91.25',
+      'DN FOUR SEASONS 1LT a:',
+      '4_A800024575250 71.50 286.00',
+      "*2'S SELECTA FORTIFIED MILK 1L SAVE Pis.",
+      '3 4800010097478 120,00 360.00',
+      'PRINGLES ORIGINAL 12X26',
+      '12 BBBEALTI00240 24.75 21.00',
+    ].join('\n');
+
+    // HOKKAIDO 155G ("HK Rsess zo" / "I 29.00 203.00" — qty misread as the
+    // letter "I", not a digit, so it never matches DATA_LINE_PATTERN's
+    // required leading digit) and MEGA SARDINES GREEN 155G ("rn a =" /
+    // "7: 75.00" — missing the code column and the Amount price entirely)
+    // are both too structurally garbled to stitch as a real two-line item.
+    // Each data line still falls through to the same-line (Case A) check on
+    // its own and produces a plausible-looking but wrong { name, price } —
+    // not a crash, not silently dropped, and not fused with an unrelated
+    // number (see the thousands-separator note on PRICE_PATTERN) — which is
+    // the accepted degradation for OCR this garbled: the user fixes or
+    // deletes the row by hand, same as any other wrong extraction.
+    expect(parseReceiptText(text)).toEqual([
+      { name: "CUPPKEYK YEMA TOPPS 10°S,", price: 56.5, quantity: 1 },
+      { name: 'ARGENTINA MEAT LOAF TOCTNO 1706', price: 22.0, quantity: 4 },
+      { name: 'LIBO MACKEREL RED 1555', price: 19.75, quantity: 4 },
+      { name: 'ARGENTINA CORNED BEEF 1755', price: 37.0, quantity: 7 },
+      { name: 'SAN MARINO CORNED TUN SPANISH STYLE i50', price: 32.25, quantity: 6 },
+      { name: 'I 29.00', price: 203 },
+      { name: '7:', price: 75 },
+      { name: 'ARGENTINA SEBY LOAF 1505+" Ha', price: 19.25, quantity: 5 },
+      { name: 'DN FOUR SEASONS 1LT a:', price: 71.5, quantity: 4 },
+      { name: "*2'S SELECTA FORTIFIED MILK 1L SAVE Pis", price: 120.0, quantity: 3 },
+      { name: 'PRINGLES ORIGINAL 12X26', price: 24.75, quantity: 12 },
+    ]);
+  });
+
   it('extracts every item from a real-world two-line-per-item supermarket receipt', () => {
     // A real Philippine supermarket receipt (found via a live test) that
     // prints each product's name on its own line, then Qty/Barcode/Price/

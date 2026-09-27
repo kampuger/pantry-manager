@@ -411,6 +411,10 @@ export function BulkAddModal({
   const csvInputRef = useRef<HTMLInputElement>(null);
   const receiptInputRef = useRef<HTMLInputElement>(null);
   const [processingReceipt, setProcessingReceipt] = useState(false);
+  // Temporary debug aid: shows exactly what OCR extracted, on-screen, so a
+  // user without access to browser DevTools can screenshot/copy it when a
+  // scan comes out wrong. TODO: remove once receipt parsing is stable.
+  const [debugRawText, setDebugRawText] = useState<string | null>(null);
   // Session-only bookkeeping (never submitted, never persisted — the "no
   // barcode is ever persisted" rule only ever meant the database) so that
   // scanning the same barcode again in this session merges into the row
@@ -547,6 +551,7 @@ export function BulkAddModal({
     setProcessingReceipt(true);
     try {
       const { rawText } = await ocrProvider.extractText({ kind: 'web-file', file });
+      setDebugRawText(rawText);
       const lines = parseReceiptText(rawText);
 
       if (lines.length === 0) {
@@ -706,6 +711,40 @@ export function BulkAddModal({
           >
             {error}
           </p>
+        )}
+
+        {debugRawText && (
+          <div style={{ display: 'grid', gap: 6 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: color.mutedForeground }}>
+                Debug: raw text OCR extracted from the last scan
+              </span>
+              <button
+                type="button"
+                onClick={() => setDebugRawText(null)}
+                style={{ ...buttonStyle('ghost'), fontSize: 12, padding: '2px 6px' }}
+              >
+                Hide
+              </button>
+            </div>
+            <pre
+              style={{
+                margin: 0,
+                padding: 10,
+                borderRadius: radius.sm,
+                background: color.muted,
+                color: color.foreground,
+                fontSize: 12,
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                maxHeight: 240,
+                overflowY: 'auto',
+                userSelect: 'text',
+              }}
+            >
+              {debugRawText}
+            </pre>
+          </div>
         )}
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, paddingTop: 8, borderTop: `1px solid ${color.border}` }}>
