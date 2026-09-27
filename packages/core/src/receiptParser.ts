@@ -6,9 +6,9 @@ export interface ParsedReceiptLine {
 // Group 1 captures the integer part, which may include thousands separators
 // (comma, period, or space, in groups of exactly 3 digits) — the LAST `.`/`,`
 // before group 2 is treated as the decimal point. An optional trailing
-// single-letter tax flag (e.g. "4.99 T" or "4.99T") is allowed before the
-// end of the line.
-const PRICE_PATTERN = /(?:[$₱]\s*)?(\d{1,3}(?:[,.\s]\d{3})*|\d+)[.,](\d{2})\s*[A-Za-z]?\s*$/;
+// alphabetic tax-status code (e.g. "4.99 T" or "4.99TFA" — real receipts use
+// anywhere from one to a few letters) is allowed before the end of the line.
+const PRICE_PATTERN = /(?:[$₱]\s*)?(\d{1,3}(?:[,.\s]\d{3})*|\d+)[.,](\d{2})\s*[A-Za-z]*\s*$/;
 
 const DENYLIST_KEYWORDS = [
   'total',
@@ -21,6 +21,7 @@ const DENYLIST_KEYWORDS = [
   'visa',
   'mastercard',
   'amount due',
+  'tend',
 ];
 
 function containsDenylistedKeyword(line: string): boolean {
