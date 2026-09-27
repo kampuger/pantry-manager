@@ -35,18 +35,106 @@ async function getWorker(): Promise<Worker> {
       // The default page-segmentation mode (AUTO) runs full layout analysis,
       // which on tabular receipts (a vertical rule between the description
       // and price columns) tends to misread the rule/border as stray
-      // characters injected at the start of each line. SINGLE_BLOCK treats
-      // the whole image as one block of uniform text and reads it line by
-      // line without that layout analysis — found via a live test on a
-      // receipt where AUTO produced garbage prefixes ("Ta ", "AN ", "| ")
-      // on every item line. This is the only OCR call site in the app
+      // characters injected at the start of each line. SINGLE_BLOCK (tried
+      // first, on a live receipt with garbage prefixes "Ta ", "AN ", "| ")
+      // did not fix it; SINGLE_COLUMN — which still assumes one column but
+      // tolerates variable-width lines, closer to a receipt's actual shape —
+      // is the next thing to try. This is the only OCR call site in the app
       // (receipt scanning), so it's safe to set globally rather than
       // per-call.
-      await worker.setParameters({ tessedit_pageseg_mode: PSM.SINGLE_BLOCK });
+      await worker.setParameters({ tessedit_pageseg_mode: PSM.SINGLE_COLUMN });
       return worker;
     })();
   }
   return workerPromise;
+}
+
+// Normalizes an arbitrary camera photo to a fixed resolution and converts it
+// to pure black-and-white before OCR. Tesseract's accuracy is sensitive to
+// both text size (a very high- or low-resolution source photo hurts it) and
+// contrast (faint thermal-printer ink reads worse than crisp black-on-white)
+// — added after page-segmentation-mode tuning alone didn't resolve stray
+// characters injected at a receipt's table border. Otsu's method picks the
+// black/white split point from the photo's own brightness histogram rather
+// than a fixed guess, since phone photos vary a lot in lighting and exposure.
+const TARGET_LONG_EDGE_PX = 2200;
+
+async function preprocessForOcr(file: File): Promise<Blob> {
+  const bitmap = await createImageBitmap(file);
+  const scale = TARGET_LONG_EDGE_PX / Math.max(bitmap.width, bitmap.height);
+  const width = Math.round(bitmap.width * scale);
+  const height = Math.round(bitmap.height * scale);
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    throw new Error('Canvas 2D context unavailable — cannot preprocess the receipt photo');
+  }
+  ctx.drawImage(bitmap, 0, 0, width, height);
+
+  const imageData = ctx.getImageData(0, 0, width, height);
+  const { data } = imageData;
+  const pixelCount = width * height;
+
+  const gray = new Uint8ClampedArray(pixelCount);
+  const histogram = new Array(256).fill(0);
+  for (let p = 0; p < pixelCount; p++) {
+    const i = p * 4;
+    const value = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
+    gray[p] = value;
+    histogram[value]++;
+  }
+
+  const threshold = otsuThreshold(histogram, pixelCount);
+
+  for (let p = 0; p < pixelCount; p++) {
+    const value = gray[p] > threshold ? 255 : 0;
+    const i = p * 4;
+    data[i] = value;
+    data[i + 1] = value;
+    data[i + 2] = value;
+  }
+  ctx.putImageData(imageData, 0, 0);
+
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob);
+      else reject(new Error('Failed to encode the preprocessed receipt photo'));
+    }, 'image/png');
+  });
+}
+
+// Finds the brightness threshold that best splits an image into two classes
+// (background/text) by maximizing the variance between them — standard
+// Otsu's method over a 256-bucket grayscale histogram.
+function otsuThreshold(histogram: number[], pixelCount: number): number {
+  let totalIntensity = 0;
+  for (let t = 0; t < 256; t++) totalIntensity += t * histogram[t];
+
+  let backgroundIntensitySum = 0;
+  let backgroundWeight = 0;
+  let maxVariance = 0;
+  let threshold = 0;
+
+  for (let t = 0; t < 256; t++) {
+    backgroundWeight += histogram[t];
+    if (backgroundWeight === 0) continue;
+    const foregroundWeight = pixelCount - backgroundWeight;
+    if (foregroundWeight === 0) break;
+
+    backgroundIntensitySum += t * histogram[t];
+    const backgroundMean = backgroundIntensitySum / backgroundWeight;
+    const foregroundMean = (totalIntensity - backgroundIntensitySum) / foregroundWeight;
+
+    const betweenClassVariance = backgroundWeight * foregroundWeight * (backgroundMean - foregroundMean) ** 2;
+    if (betweenClassVariance > maxVariance) {
+      maxVariance = betweenClassVariance;
+      threshold = t;
+    }
+  }
+  return threshold;
 }
 
 export const ocrProvider: IOcrProvider = {
@@ -59,7 +147,8 @@ export const ocrProvider: IOcrProvider = {
     let objectUrl: string | null = null;
 
     try {
-      objectUrl = URL.createObjectURL(file);
+      const preprocessed = await preprocessForOcr(file);
+      objectUrl = URL.createObjectURL(preprocessed);
       const worker = await getWorker();
       const { data } = await worker.recognize(objectUrl);
       return {
