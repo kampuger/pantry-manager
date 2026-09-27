@@ -50,6 +50,20 @@ function emptyRow(previous?: BulkRow): BulkRow {
   };
 }
 
+// Fills the grid's trailing blank scratch row (if there is one) with the
+// given name/quantity, or appends a fresh row seeded from the last one —
+// the same fill-or-append rule addRow() and handleBarcodeDetected already
+// use, extracted here since barcode-merge needs it in two places (a brand
+// new scan, and re-adding a scanned row the user deleted mid-session).
+function placeScannedRow(prev: BulkRow[], name: string, quantity: number): { rows: BulkRow[]; key: string } {
+  const last = prev[prev.length - 1];
+  const isBlank = last.name.trim() === '';
+  const row = isBlank
+    ? { ...last, name, quantity: String(quantity) }
+    : { ...emptyRow(last), name, quantity: String(quantity) };
+  return { rows: isBlank ? [...prev.slice(0, -1), row] : [...prev, row], key: row.key };
+}
+
 const CELL_STYLE: React.CSSProperties = { padding: '6px 6px' };
 const CELL_INPUT_STYLE: React.CSSProperties = { ...inputStyle, padding: '7px 8px', fontSize: 13 };
 // Shared by both toolbar buttons ("+ Add row" and "Scan barcode") below the
@@ -390,6 +404,14 @@ export function BulkAddModal({
   const [error, setError] = useState<string | null>(null);
   const [showScanner, setShowScanner] = useState(false);
   const csvInputRef = useRef<HTMLInputElement>(null);
+  // Session-only bookkeeping (never submitted, never persisted — the "no
+  // barcode is ever persisted" rule only ever meant the database) so that
+  // scanning the same barcode again in this session merges into the row
+  // already created for it (quantity+1) instead of adding a duplicate. A
+  // ref rather than state: it must stay synchronously correct across rapid
+  // repeat scans, independent of React's render/commit timing, and nothing
+  // here needs to trigger a re-render on its own.
+  const scannedItems = useRef<Map<string, { rowKey: string; name: string; quantity: number }>>(new Map());
 
   function updateRow(key: string, changes: Partial<BulkRow>) {
     setRows((prev) => prev.map((row) => (row.key === key ? { ...row, ...changes } : row)));
@@ -407,21 +429,43 @@ export function BulkAddModal({
   // effect depends on `onDetect`'s identity, and an unstable reference here
   // would tear down and re-acquire the camera on every parent re-render.
   const handleBarcodeDetected = useCallback(async (barcode: string): Promise<string> => {
+    const existing = scannedItems.current.get(barcode);
+
+    // A repeat scan of a barcode already seen this session: skip the
+    // network lookup entirely (it's the same barcode, the result can't
+    // have changed) and just bump that row's quantity.
+    if (existing) {
+      const newQuantity = existing.quantity + 1;
+      scannedItems.current.set(barcode, { ...existing, quantity: newQuantity });
+      setRows((prev) => {
+        const stillThere = prev.some((row) => row.key === existing.rowKey);
+        if (stillThere) {
+          return prev.map((row) => (row.key === existing.rowKey ? { ...row, quantity: String(newQuantity) } : row));
+        }
+        // The row was deleted (✕) since the last scan of this barcode —
+        // re-add it fresh rather than silently losing the increment, and
+        // correct the tracked row key so the *next* repeat scan finds it.
+        const { rows, key } = placeScannedRow(prev, existing.name, newQuantity);
+        scannedItems.current.set(barcode, { rowKey: key, name: existing.name, quantity: newQuantity });
+        return rows;
+      });
+      return `${existing.name} (now ${newQuantity})`;
+    }
+
     const result = await openFoodFactsProvider.lookup(barcode);
     // Open Food Facts names are frequently generic/unbranded (e.g. "Whole
     // Milk"), so the brand is often what actually distinguishes a product —
     // combine them when both are present.
     const resolvedName = [result?.brand, result?.name].filter(Boolean).join(' ');
     const displayName = resolvedName || `Unknown item (${barcode})`;
+
     setRows((prev) => {
-      const last = prev[prev.length - 1];
       // The modal always starts with (and "+ Add row" always leaves) one
       // blank scratch row at the end — fill that one first rather than
       // always appending, so the very first scan doesn't skip row 1.
-      if (last.name.trim() === '') {
-        return [...prev.slice(0, -1), { ...last, name: displayName }];
-      }
-      return [...prev, { ...emptyRow(last), name: displayName }];
+      const { rows, key } = placeScannedRow(prev, displayName, 1);
+      scannedItems.current.set(barcode, { rowKey: key, name: displayName, quantity: 1 });
+      return rows;
     });
     return displayName;
   }, []);
