@@ -77,6 +77,27 @@ function stripFillCharacters(name: string): string {
   return name.replace(/[\s.\-]+$/, '').trim();
 }
 
+// Strips a leading token made entirely of non-alphanumeric characters (e.g.
+// "™ ", "| ", "~ ") — OCR noise from a receipt's decorative marks or a
+// misread table border/rule (found via a live test on a VAT invoice where
+// every item line had a different stray symbol glued to the front). A real
+// item name never starts with a token that has no letters or digits in it
+// at all, so this is safe to strip unconditionally — unlike letter-based
+// garbage (e.g. a misread "Ta " or "AN " prefix), which is ambiguous with a
+// legitimate short word and is deliberately left alone.
+function stripLeadingSymbolGarbage(name: string): string {
+  let result = name;
+  let match: RegExpMatchArray | null;
+  while ((match = result.match(/^([^\sA-Za-z0-9]+)(?:\s+|$)/))) {
+    result = result.slice(match[0].length);
+  }
+  return result;
+}
+
+function cleanName(raw: string): string {
+  return stripLeadingSymbolGarbage(stripFillCharacters(raw));
+}
+
 function stripSeparators(digits: string): string {
   return digits.replace(/[,.]/g, '');
 }
@@ -95,7 +116,7 @@ export function parseReceiptText(rawText: string): ParsedReceiptLine[] {
     // into the name.
     const singleLineItemMatch = line.match(SINGLE_LINE_ITEM_PATTERN);
     if (singleLineItemMatch) {
-      const name = stripFillCharacters(singleLineItemMatch[1]);
+      const name = cleanName(singleLineItemMatch[1]);
       if (name !== '') {
         const quantity = Number(singleLineItemMatch[2]);
         const integerPart = stripSeparators(singleLineItemMatch[3]);
@@ -108,7 +129,7 @@ export function parseReceiptText(rawText: string): ParsedReceiptLine[] {
     // Case A: name and price on the same line (e.g. "MILK 4.99").
     const sameLineMatch = line.match(PRICE_PATTERN);
     if (sameLineMatch) {
-      const name = stripFillCharacters(line.slice(0, sameLineMatch.index));
+      const name = cleanName(line.slice(0, sameLineMatch.index));
       if (name === '') continue;
       const integerPart = stripSeparators(sameLineMatch[1]);
       const price = Number(`${integerPart}.${sameLineMatch[2]}`);
@@ -125,7 +146,7 @@ export function parseReceiptText(rawText: string): ParsedReceiptLine[] {
     const dataMatch = nextLine.match(DATA_LINE_PATTERN);
     if (!dataMatch) continue;
 
-    const name = stripFillCharacters(line);
+    const name = cleanName(line);
     if (name === '') continue;
 
     const quantity = Number(dataMatch[1]);

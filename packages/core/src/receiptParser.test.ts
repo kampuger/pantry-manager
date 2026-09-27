@@ -285,8 +285,11 @@ describe('parseReceiptText', () => {
     // footer (Gross Sales, VATable Sales, Customer Account, etc.) that must
     // not become spurious rows. Leading garbage characters on each item line
     // ("Ta ", "™ ", "AN ", "OW ", "| ") are OCR noise from the physical
-    // receipt itself, not a parser bug — not fixable via regex, same
-    // accepted degradation as the noisy-OCR test above.
+    // receipt itself; the purely-symbolic ones ("™ ", "| ") are stripped by
+    // stripLeadingSymbolGarbage, but the letter-based ones ("Ta ", "AN ",
+    // "OW ") are deliberately left alone (ambiguous with a real short word)
+    // — not fixable via regex, same accepted degradation as the noisy-OCR
+    // test above.
     const text = [
       'Description U.Cost Qty Amount',
       'Store BEN \'',
@@ -307,10 +310,25 @@ describe('parseReceiptText', () => {
 
     expect(parseReceiptText(text)).toEqual([
       { name: 'Ta Spicy Fearles', price: 400.0, quantity: 1 },
-      { name: '™ Clam Chowder', price: 230.0, quantity: 1 },
+      { name: 'Clam Chowder', price: 230.0, quantity: 1 },
       { name: 'AN Curly Frie', price: 185.0, quantity: 1 },
       { name: 'OW SteakSSS', price: 410.0, quantity: 1 },
-      { name: '| CB Fr Van', price: 235.0, quantity: 1 },
+      { name: 'CB Fr Van', price: 235.0, quantity: 1 },
     ]);
+  });
+
+  it('strips a leading token made entirely of symbols, but leaves letter-based prefixes alone', () => {
+    expect(parseReceiptText('™ Clam Chowder 4.99')).toEqual([{ name: 'Clam Chowder', price: 4.99 }]);
+    expect(parseReceiptText('| CB Fr Van 4.99')).toEqual([{ name: 'CB Fr Van', price: 4.99 }]);
+    expect(parseReceiptText('~ Bottled Water 4.99')).toEqual([{ name: 'Bottled Water', price: 4.99 }]);
+    // Letter-based prefixes are ambiguous with a real short word (e.g. "Dr
+    // Pepper") — deliberately not stripped.
+    expect(parseReceiptText('AN Curly Frie 4.99')).toEqual([{ name: 'AN Curly Frie', price: 4.99 }]);
+  });
+
+  it('does not strip a leading token that mixes symbols with letters or digits', () => {
+    // "*2'S" starts with a symbol but also contains a digit and a letter —
+    // not a pure-symbol token, so it must be left as part of the name.
+    expect(parseReceiptText("*2'S SELECTA MILK 4.99")).toEqual([{ name: "*2'S SELECTA MILK", price: 4.99 }]);
   });
 });
