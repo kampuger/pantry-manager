@@ -175,37 +175,156 @@ function handleCellPaste(
 
 // Shown under a row's Name field only for receipt-scanned rows that need a
 // second look: a low-OCR-confidence flag, and/or a "did you mean" suggestion
-// matched against this household's own past pantry item names. Neither
-// auto-changes anything — the user applies or dismisses the suggestion, and
-// the confidence flag is just a pointer to what to check first.
+// matched against this household's own past pantry item names. Kept to at
+// most one icon + one chip (no separate warning sentence, no separate
+// dismiss button) — editing the Name field directly already clears the
+// suggestion (see its onChange in MobileRows/DesktopRows), so a dismiss
+// control would be redundant.
 function NameReviewHints({ row, updateRow }: { row: BulkRow; updateRow: (key: string, changes: Partial<BulkRow>) => void }) {
   if (!row.lowConfidence && !row.suggestedName) return null;
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', fontSize: 11 }}>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', marginTop: 4 }}>
       {row.lowConfidence && (
-        <span style={{ color: color.destructive, fontWeight: 600 }} title="OCR wasn't confident about this line — double-check it">
-          ⚠ Low OCR confidence
+        <span
+          title="OCR wasn't confident about this line — double-check it"
+          aria-label="OCR wasn't confident about this line — double-check it"
+          style={{ fontSize: 13, cursor: 'help', lineHeight: 1 }}
+        >
+          ⚠️
         </span>
       )}
       {row.suggestedName && (
-        <span style={{ display: 'flex', gap: 4, alignItems: 'center', color: color.mutedForeground }}>
-          Did you mean &ldquo;{row.suggestedName}&rdquo;?
+        <button
+          type="button"
+          onClick={() => updateRow(row.key, { name: row.suggestedName, suggestedName: undefined })}
+          title={`Use suggested name: ${row.suggestedName}`}
+          style={{ ...buttonStyle('ghost'), padding: '2px 8px', fontSize: 11, borderRadius: radius.pill, whiteSpace: 'nowrap' }}
+        >
+          ↳ {row.suggestedName}?
+        </button>
+      )}
+    </div>
+  );
+}
+
+// Consolidates the three "bring in items from elsewhere" actions (CSV,
+// receipt, barcode) behind one toolbar entry point instead of three
+// permanently-visible buttons — the grid otherwise accumulates one new
+// top-level button per intake method added over time.
+function ImportMenu({
+  onUploadCsvClick,
+  onScanReceiptClick,
+  onScanBarcodeClick,
+  processingReceipt,
+  showScanBarcode,
+}: {
+  onUploadCsvClick: () => void;
+  onScanReceiptClick: () => void;
+  onScanBarcodeClick: () => void;
+  processingReceipt: boolean;
+  showScanBarcode: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handlePointerDown(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') setOpen(false);
+    }
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [open]);
+
+  const menuItemStyle: React.CSSProperties = {
+    display: 'block',
+    width: '100%',
+    textAlign: 'left',
+    padding: '8px 14px',
+    background: 'none',
+    border: 'none',
+    borderRadius: radius.sm,
+    cursor: 'pointer',
+    fontSize: 13,
+    color: color.foreground,
+    fontFamily: 'inherit',
+  };
+
+  return (
+    <div ref={containerRef} style={{ position: 'relative' }}>
+      <button
+        type="button"
+        onClick={() => setOpen((prev) => !prev)}
+        aria-haspopup="true"
+        aria-expanded={open}
+        style={TOOLBAR_BUTTON_STYLE}
+      >
+        Import ▾
+      </button>
+      {open && (
+        <div
+          role="menu"
+          style={{
+            position: 'absolute',
+            top: 'calc(100% + 6px)',
+            left: 0,
+            zIndex: 20,
+            minWidth: 190,
+            background: color.card,
+            border: `1px solid ${color.border}`,
+            borderRadius: radius.md,
+            boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
+            padding: 6,
+            display: 'grid',
+            gap: 2,
+          }}
+        >
           <button
             type="button"
-            onClick={() => updateRow(row.key, { name: row.suggestedName, suggestedName: undefined })}
-            style={{ ...buttonStyle('ghost'), padding: '1px 6px', fontSize: 11 }}
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              onUploadCsvClick();
+            }}
+            style={menuItemStyle}
           >
-            Use
+            Upload CSV
           </button>
           <button
             type="button"
-            onClick={() => updateRow(row.key, { suggestedName: undefined })}
-            aria-label="Dismiss suggestion"
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: color.mutedForeground, fontSize: 11, padding: '1px 4px' }}
+            role="menuitem"
+            disabled={processingReceipt}
+            onClick={() => {
+              setOpen(false);
+              onScanReceiptClick();
+            }}
+            style={{ ...menuItemStyle, opacity: processingReceipt ? 0.6 : 1, cursor: processingReceipt ? 'default' : 'pointer' }}
           >
-            ✕
+            {processingReceipt ? 'Processing receipt…' : 'Scan receipt'}
           </button>
-        </span>
+          {showScanBarcode && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                onScanBarcodeClick();
+              }}
+              style={menuItemStyle}
+            >
+              Scan barcode
+            </button>
+          )}
+        </div>
       )}
     </div>
   );
@@ -246,7 +365,7 @@ function MobileRows({ rows, updateRow, removeRow }: RowsProps) {
 
           <input
             value={row.name}
-            onChange={(e) => updateRow(row.key, { name: e.target.value })}
+            onChange={(e) => updateRow(row.key, { name: e.target.value, suggestedName: undefined })}
             placeholder="Name"
             style={inputStyle}
           />
@@ -349,7 +468,7 @@ function DesktopRows({ rows, updateRow, removeRow, onPasteGrid }: DesktopRowsPro
               <td style={CELL_STYLE}>
                 <input
                   value={row.name}
-                  onChange={(e) => updateRow(row.key, { name: e.target.value })}
+                  onChange={(e) => updateRow(row.key, { name: e.target.value, suggestedName: undefined })}
                   onPaste={(e) => handleCellPaste(e, rowIndex, 'name', onPasteGrid)}
                   placeholder="e.g. Strawberries"
                   style={{ ...CELL_INPUT_STYLE, minWidth: 150 }}
@@ -766,13 +885,20 @@ export function BulkAddModal({
           <DesktopRows rows={rows} updateRow={updateRow} removeRow={removeRow} onPasteGrid={handlePasteGrid} />
         )}
 
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
           <button type="button" onClick={addRow} style={TOOLBAR_BUTTON_STYLE}>
             + Add row
           </button>
-          <button type="button" onClick={() => csvInputRef.current?.click()} style={TOOLBAR_BUTTON_STYLE}>
-            Upload CSV
-          </button>
+          <ImportMenu
+            onUploadCsvClick={() => csvInputRef.current?.click()}
+            onScanReceiptClick={() => receiptInputRef.current?.click()}
+            onScanBarcodeClick={() => setShowScanner(true)}
+            processingReceipt={processingReceipt}
+            showScanBarcode={isMobile}
+          />
+          {processingReceipt && (
+            <span style={{ fontSize: 12, color: color.mutedForeground }}>Processing receipt…</span>
+          )}
           <input
             ref={csvInputRef}
             type="file"
@@ -784,14 +910,6 @@ export function BulkAddModal({
               if (file) void handleCsvUpload(file);
             }}
           />
-          <button
-            type="button"
-            onClick={() => receiptInputRef.current?.click()}
-            disabled={processingReceipt}
-            style={TOOLBAR_BUTTON_STYLE}
-          >
-            {processingReceipt ? 'Processing receipt…' : 'Scan receipt'}
-          </button>
           <input
             ref={receiptInputRef}
             type="file"
@@ -804,20 +922,6 @@ export function BulkAddModal({
               if (file) void handleReceiptUpload(file);
             }}
           />
-          {isMobile && (
-            <button type="button" onClick={() => setShowScanner(true)} style={TOOLBAR_BUTTON_STYLE}>
-              Scan barcode
-            </button>
-          )}
-          {isAdmin && (
-            <button
-              type="button"
-              onClick={toggleDebug}
-              style={{ ...buttonStyle('ghost'), padding: '8px 14px', borderRadius: radius.pill, fontSize: 12 }}
-            >
-              {showDebug ? 'Hide OCR debug' : 'Show OCR debug'}
-            </button>
-          )}
         </div>
 
         {showScanner && (
@@ -874,13 +978,26 @@ export function BulkAddModal({
           </div>
         )}
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, paddingTop: 8, borderTop: `1px solid ${color.border}` }}>
-          <button type="button" onClick={onCancel} style={buttonStyle('secondary')}>
-            Cancel
-          </button>
-          <button type="submit" disabled={submitting || processingReceipt} style={buttonStyle('primary')}>
-            {submitting ? 'Saving…' : 'Save all'}
-          </button>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, paddingTop: 8, borderTop: `1px solid ${color.border}` }}>
+          {isAdmin ? (
+            <button
+              type="button"
+              onClick={toggleDebug}
+              style={{ ...buttonStyle('ghost'), padding: '4px 10px', fontSize: 11 }}
+            >
+              {showDebug ? 'Hide OCR debug' : 'Show OCR debug'}
+            </button>
+          ) : (
+            <span />
+          )}
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button type="button" onClick={onCancel} style={buttonStyle('secondary')}>
+              Cancel
+            </button>
+            <button type="submit" disabled={submitting || processingReceipt} style={buttonStyle('primary')}>
+              {submitting ? 'Saving…' : 'Save all'}
+            </button>
+          </div>
         </div>
       </form>
     </div>
