@@ -51,4 +51,17 @@ describe('parseReceiptText', () => {
   it('returns an empty array for empty input', () => {
     expect(parseReceiptText('')).toEqual([]);
   });
+
+  it('handles a thousands separator in the price', () => {
+    expect(parseReceiptText('RICE 1,234.56')).toEqual([{ name: 'RICE', price: 1234.56 }]);
+  });
+
+  it('handles a trailing tax-flag letter after the price', () => {
+    expect(parseReceiptText('MILK 4.99 T')).toEqual([{ name: 'MILK', price: 4.99 }]);
+    expect(parseReceiptText('MILK 4.99T')).toEqual([{ name: 'MILK', price: 4.99 }]);
+  });
+
+  it('uses the trailing price when a line has two price-like numbers', () => {
+    expect(parseReceiptText('MILK 2 @ 2.50 5.00')).toEqual([{ name: 'MILK 2 @ 2.50', price: 5.0 }]);
+  });
 });

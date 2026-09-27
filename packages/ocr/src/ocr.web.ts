@@ -1,18 +1,38 @@
 // packages/ocr/src/ocr.web.ts
+//
+// This file must be deep-imported by web consumers (`@pantry/ocr/src/ocr.web`),
+// never via the bare `@pantry/ocr` package name. The `browser` field below in
+// package.json is NOT sufficient on its own — Next.js's SSR bundle resolves
+// the bare specifier via `main`, not `browser`, for this package.
+//
+// The assets under apps/web/public/tesseract/ (worker.min.js and the two
+// tesseract-core*.wasm.js files) are hand-copied from this package's
+// tesseract.js / tesseract.js-core dependencies at their currently-pinned
+// version (5.1.1). If those deps are ever upgraded, re-copy the assets —
+// a version mismatch surfaces as a confusing runtime failure, not a build error.
 import { createWorker, type Worker } from 'tesseract.js';
 import type { IOcrProvider, OcrInput, OcrResult } from './types';
 
-let workerSingleton: Worker | null = null;
+// Memoize the in-flight promise (not the resolved worker) so concurrent
+// callers await the same creation instead of each spawning their own worker.
+let workerPromise: Promise<Worker> | null = null;
 
+// The worker is intentionally never terminated — it's kept alive for the
+// tab's lifetime since re-initializing costs several seconds. This is a
+// deliberate tradeoff, not an oversight.
 async function getWorker(): Promise<Worker> {
-  if (!workerSingleton) {
-    workerSingleton = await createWorker('eng', 1, {
+  if (!workerPromise) {
+    workerPromise = createWorker('eng', 1, {
       workerPath: '/tesseract/worker.min.js',
-      corePath: '/tesseract/tesseract-core.wasm.js',
+      // Directory form (no filename) lets tesseract.js's own getCore.js do
+      // SIMD feature detection at runtime and pick tesseract-core-simd-lstm
+      // or tesseract-core-lstm accordingly. Both must be present under
+      // apps/web/public/tesseract/.
+      corePath: '/tesseract',
       langPath: '/tesseract',
     });
   }
-  return workerSingleton;
+  return workerPromise;
 }
 
 export const ocrProvider: IOcrProvider = {

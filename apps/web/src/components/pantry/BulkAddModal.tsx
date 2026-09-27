@@ -6,6 +6,10 @@ import { UNIT_OPTIONS, STORAGE_LOCATION_OPTIONS } from '@pantry/supabase-client'
 import { computeExpiryDate, parseBulkPasteGrid, resolveCsvHeader, parseReceiptText, CELL_COLUMNS, type CellColumn } from '@pantry/core';
 import { formatExpiryDate } from '@pantry/ui';
 import { openFoodFactsProvider } from '@pantry/product-lookup';
+// Deep file import, not `@pantry/ocr` — Next.js's SSR bundle resolves the
+// bare specifier via `main` (not `browser`) to `src/ocr.native.ts`, which
+// imports React-Native-only packages that fail to parse under webpack.
+// See docs/superpowers/specs/2026-09-27-receipt-ocr-intake-design.md.
 import { ocrProvider } from '@pantry/ocr/src/ocr.web';
 import { useIsMobile } from '@/lib/useIsMobile';
 import { color, radius, cardStyle, inputStyle, buttonStyle } from '@/lib/theme';
@@ -699,7 +703,7 @@ export function BulkAddModal({
           <button type="button" onClick={onCancel} style={buttonStyle('secondary')}>
             Cancel
           </button>
-          <button type="submit" disabled={submitting} style={buttonStyle('primary')}>
+          <button type="submit" disabled={submitting || processingReceipt} style={buttonStyle('primary')}>
             {submitting ? 'Saving…' : 'Save all'}
           </button>
         </div>

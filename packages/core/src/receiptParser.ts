@@ -3,7 +3,12 @@ export interface ParsedReceiptLine {
   price: number;
 }
 
-const PRICE_PATTERN = /(?:[$₱]\s*)?(\d+)[.,](\d{2})\s*$/;
+// Group 1 captures the integer part, which may include thousands separators
+// (comma, period, or space, in groups of exactly 3 digits) — the LAST `.`/`,`
+// before group 2 is treated as the decimal point. An optional trailing
+// single-letter tax flag (e.g. "4.99 T" or "4.99T") is allowed before the
+// end of the line.
+const PRICE_PATTERN = /(?:[$₱]\s*)?(\d{1,3}(?:[,.\s]\d{3})*|\d+)[.,](\d{2})\s*[A-Za-z]?\s*$/;
 
 const DENYLIST_KEYWORDS = [
   'total',
@@ -43,7 +48,11 @@ export function parseReceiptText(rawText: string): ParsedReceiptLine[] {
     const name = stripFillCharacters(line.slice(0, match.index));
     if (name === '') continue;
 
-    const price = Number(`${match[1]}.${match[2]}`);
+    // match[1] may contain thousands-separator characters (commas, periods,
+    // or spaces) when the number had thousands grouping — strip them before
+    // parsing so only the true decimal point (from match[2]) remains.
+    const integerPart = match[1].replace(/[,.\s]/g, '');
+    const price = Number(`${integerPart}.${match[2]}`);
     results.push({ name, price });
   }
 
