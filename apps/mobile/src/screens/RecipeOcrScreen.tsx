@@ -1,7 +1,12 @@
-// Photo/OCR capture is on hold — @pantry/ocr's package.json resolution has a
-// known, still-open issue on the Next.js web build (see packages/ocr) and
-// wiring up the camera flow is separate scope. This screen instead accepts
-// pasted recipe text directly, which needs no OCR at all.
+// Photo/OCR capture is on hold — not because of a package.json resolution
+// bug (that's now understood and fixed: web code must import
+// `@pantry/ocr/src/ocr.web` directly rather than the bare `@pantry/ocr`
+// specifier, since Next.js's webpack ignores the package's `browser` field
+// and otherwise pulls in React-Native-only code — see
+// docs/superpowers/specs/2026-09-27-receipt-ocr-intake-design.md) — but
+// because wiring up an actual camera-capture flow for this screen is
+// separate, unstarted scope. This screen instead accepts pasted recipe
+// text directly, which needs no OCR at all.
 import { useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { matchRecipeIngredients, type MatchedIngredient } from '@pantry/core';

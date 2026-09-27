@@ -9,6 +9,7 @@ async function getWorker(): Promise<Worker> {
     workerSingleton = await createWorker('eng', 1, {
       workerPath: '/tesseract/worker.min.js',
       corePath: '/tesseract/tesseract-core.wasm.js',
+      langPath: '/tesseract',
     });
   }
   return workerSingleton;
