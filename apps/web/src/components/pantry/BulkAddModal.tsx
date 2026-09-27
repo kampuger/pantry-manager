@@ -3,9 +3,10 @@
 import { useCallback, useRef, useState } from 'react';
 import Papa from 'papaparse';
 import { UNIT_OPTIONS, STORAGE_LOCATION_OPTIONS } from '@pantry/supabase-client';
-import { computeExpiryDate, parseBulkPasteGrid, resolveCsvHeader, CELL_COLUMNS, type CellColumn } from '@pantry/core';
+import { computeExpiryDate, parseBulkPasteGrid, resolveCsvHeader, parseReceiptText, CELL_COLUMNS, type CellColumn } from '@pantry/core';
 import { formatExpiryDate } from '@pantry/ui';
 import { openFoodFactsProvider } from '@pantry/product-lookup';
+import { ocrProvider } from '@pantry/ocr/src/ocr.web';
 import { useIsMobile } from '@/lib/useIsMobile';
 import { color, radius, cardStyle, inputStyle, buttonStyle } from '@/lib/theme';
 import { BarcodeScanner } from './BarcodeScanner';
@@ -404,6 +405,8 @@ export function BulkAddModal({
   const [error, setError] = useState<string | null>(null);
   const [showScanner, setShowScanner] = useState(false);
   const csvInputRef = useRef<HTMLInputElement>(null);
+  const receiptInputRef = useRef<HTMLInputElement>(null);
+  const [processingReceipt, setProcessingReceipt] = useState(false);
   // Session-only bookkeeping (never submitted, never persisted — the "no
   // barcode is ever persisted" rule only ever meant the database) so that
   // scanning the same barcode again in this session merges into the row
@@ -535,6 +538,42 @@ export function BulkAddModal({
     });
   }
 
+  async function handleReceiptUpload(file: File) {
+    setError(null);
+    setProcessingReceipt(true);
+    try {
+      const { rawText } = await ocrProvider.extractText({ kind: 'web-file', file });
+      const lines = parseReceiptText(rawText);
+
+      if (lines.length === 0) {
+        setError("Couldn't find any priced line items in this receipt — try a clearer photo, or add items manually.");
+        return;
+      }
+
+      // Truncation depends on the current row count (receipt rows always
+      // append, like CSV upload), so it's decided here against the render's
+      // own `rows` rather than inside the setRows updater.
+      let toAdd = lines;
+      if (rows.length + toAdd.length > MAX_PASTE_ROWS) {
+        setError(`Receipt truncated to ${MAX_PASTE_ROWS} rows total — that's more than fits in one add.`);
+        toAdd = toAdd.slice(0, Math.max(0, MAX_PASTE_ROWS - rows.length));
+      }
+
+      setRows((prev) => {
+        let next = [...prev];
+        for (const line of toAdd) {
+          const row = { ...emptyRow(next[next.length - 1]), name: line.name, purchasePrice: String(line.price) };
+          next = [...next, row];
+        }
+        return next;
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to read that receipt image.');
+    } finally {
+      setProcessingReceipt(false);
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -579,8 +618,8 @@ export function BulkAddModal({
         <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: color.foreground }}>Add items</h2>
         <p style={{ margin: '4px 0 0', fontSize: 13, color: color.mutedForeground }}>
           {isMobile
-            ? 'Fill in a row per item, upload a CSV, or use Scan barcode to add items by camera — add more rows as you need them, then save them all at once.'
-            : 'Fill in a row per item, upload a CSV, or paste a list from a spreadsheet straight into the grid — add more rows as you need them, then save them all at once.'}
+            ? 'Fill in a row per item, upload a CSV, scan a receipt, or use Scan barcode to add items by camera — add more rows as you need them, then save them all at once.'
+            : 'Fill in a row per item, upload a CSV, scan a receipt, or paste a list from a spreadsheet straight into the grid — add more rows as you need them, then save them all at once.'}
         </p>
       </div>
 
@@ -607,6 +646,26 @@ export function BulkAddModal({
               const file = e.target.files?.[0];
               e.target.value = ''; // reset so selecting the same file again still fires onChange
               if (file) void handleCsvUpload(file);
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => receiptInputRef.current?.click()}
+            disabled={processingReceipt}
+            style={TOOLBAR_BUTTON_STYLE}
+          >
+            {processingReceipt ? 'Processing receipt…' : 'Scan receipt'}
+          </button>
+          <input
+            ref={receiptInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            style={{ display: 'none' }}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = ''; // reset so selecting the same file again still fires onChange
+              if (file) void handleReceiptUpload(file);
             }}
           />
           {isMobile && (
