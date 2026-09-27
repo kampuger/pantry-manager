@@ -566,7 +566,16 @@ export function BulkAddModal({
       setRows((prev) => {
         let next = [...prev];
         for (const line of toAdd) {
-          const row = { ...emptyRow(next[next.length - 1]), name: line.name, purchasePrice: String(line.price) };
+          const row = {
+            ...emptyRow(next[next.length - 1]),
+            name: line.name,
+            purchasePrice: String(line.price),
+            // Only set when the receipt printed a real Qty column (a
+            // two-line "name, then Qty/Code/Price/Amount" row) — a plain
+            // single-line "name price" receipt leaves quantity at its
+            // inherited/default value.
+            ...(line.quantity !== undefined ? { quantity: String(line.quantity) } : {}),
+          };
           next = [...next, row];
         }
         return next;

@@ -72,6 +72,76 @@ describe('parseReceiptText', () => {
     expect(parseReceiptText('TEND $29.82')).toEqual([]);
   });
 
+  it('stitches a name-only line to a following "Qty Code UnitPrice Amount" line', () => {
+    const text = "CUPPKEYK YEMA TOPPS 10'S\n1   4800092555008                  56.50    56.50";
+    expect(parseReceiptText(text)).toEqual([{ name: "CUPPKEYK YEMA TOPPS 10'S", price: 56.5, quantity: 1 }]);
+  });
+
+  it('uses the unit price, not the line total, for a multi-quantity stitched line', () => {
+    const text = 'ARGENTINA MEAT LOAF TOCINO 170G\n6   748485801445                   22.00    132.00';
+    expect(parseReceiptText(text)).toEqual([{ name: 'ARGENTINA MEAT LOAF TOCINO 170G', price: 22.0, quantity: 6 }]);
+  });
+
+  it('does not stitch a name-only line to a following line that is not a valid data line', () => {
+    // No qty/code/price/amount shape on the next line — nothing to stitch to.
+    expect(parseReceiptText('SOME HEADER TEXT\nMORE HEADER TEXT')).toEqual([]);
+  });
+
+  it('does not treat a stitched data line as its own separate candidate', () => {
+    // Without the "consume the data line" advance, "1   4800...   56.50   56.50"
+    // would also be evaluated on its own next iteration and (since it has no
+    // preceding name line at that point) produce nothing anyway here — but a
+    // three-item sequence proves the loop position is actually advancing
+    // correctly rather than re-reading the same data line twice.
+    const text = [
+      'ITEM ONE',
+      '1   1111111111111   10.00   10.00',
+      'ITEM TWO',
+      '2   2222222222222   5.00   10.00',
+    ].join('\n');
+    expect(parseReceiptText(text)).toEqual([
+      { name: 'ITEM ONE', price: 10.0, quantity: 1 },
+      { name: 'ITEM TWO', price: 5.0, quantity: 2 },
+    ]);
+  });
+
+  it('extracts every item from a real-world two-line-per-item supermarket receipt', () => {
+    // A real Philippine supermarket receipt (found via a live test) that
+    // prints each product's name on its own line, then Qty/Barcode/Price/
+    // Amount on the next — plus a column-header line and store/cashier
+    // metadata that must not produce spurious rows.
+    const text = [
+      'FRIENDSHIP SUPERMARKET INC.',
+      'Barangay Matias Poblacion',
+      'Talavera, Nueva Ecija',
+      'TIN# 246-626-150-007 VAT',
+      'CTC7904606 MIN120285871',
+      '',
+      'CASHIER : MICHELLE M.  #0767',
+      '07/27/2021        13:51:38',
+      '#0000345320       OR#006-000333459',
+      '',
+      'Qty  Description                    Price    Amount',
+      '',
+      'VAT SALES',
+      "CUPPKEYK YEMA TOPPS 10'S",
+      '1   4800092555008                  56.50    56.50',
+      'ARGENTINA MEAT LOAF TOCINO 170G',
+      '6   748485801445                   22.00    132.00',
+      'LIGO MACKEREL RED 155G',
+      '4   4800163001045                  19.75    79.00',
+      'ARGENTINA CORNED BEEF 175G',
+      '7   748485800011                   37.00    259.00',
+    ].join('\n');
+
+    expect(parseReceiptText(text)).toEqual([
+      { name: "CUPPKEYK YEMA TOPPS 10'S", price: 56.5, quantity: 1 },
+      { name: 'ARGENTINA MEAT LOAF TOCINO 170G', price: 22.0, quantity: 6 },
+      { name: 'LIGO MACKEREL RED 155G', price: 19.75, quantity: 4 },
+      { name: 'ARGENTINA CORNED BEEF 175G', price: 37.0, quantity: 7 },
+    ]);
+  });
+
   it('extracts only the real line items from a full real-world receipt', () => {
     // A real grocery receipt (found via a live test) with per-unit
     // quantity/price breakdown lines, a TFA tax-status suffix on every item,

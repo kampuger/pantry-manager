@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Static assets served as-is — never source to lint. Added when
+    // vendored/minified OCR and barcode-decoding JS landed under public/.
+    "public/**",
   ]),
 ]);
 
