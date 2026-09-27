@@ -3,7 +3,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Papa from 'papaparse';
 import { UNIT_OPTIONS, STORAGE_LOCATION_OPTIONS, checkIsPlatformAdmin } from '@pantry/supabase-client';
-import { computeExpiryDate, parseBulkPasteGrid, resolveCsvHeader, parseReceiptText, CELL_COLUMNS, type CellColumn } from '@pantry/core';
+import {
+  computeExpiryDate,
+  parseBulkPasteGrid,
+  resolveCsvHeader,
+  parseReceiptText,
+  suggestKnownName,
+  estimateLineConfidence,
+  LOW_CONFIDENCE_THRESHOLD,
+  CELL_COLUMNS,
+  type CellColumn,
+} from '@pantry/core';
 import { formatExpiryDate } from '@pantry/ui';
 import { openFoodFactsProvider } from '@pantry/product-lookup';
 // Deep file import, not `@pantry/ocr` — Next.js's SSR bundle resolves the
@@ -36,6 +46,13 @@ interface BulkRow {
   isProduce: boolean;
   expirationDate: string;
   purchasePrice: string;
+  // Receipt-scan-only fields (undefined for manually-typed/CSV/barcode rows):
+  // flags Tesseract's own low confidence on this line, and a "did you mean"
+  // suggestion matched against this household's own past pantry item names.
+  // Neither is ever submitted — see BulkItemInput, which only maps the
+  // fields above.
+  lowConfidence?: boolean;
+  suggestedName?: string;
 }
 
 let rowKeySeq = 0;
@@ -156,6 +173,44 @@ function handleCellPaste(
   onPasteGrid(rowIndex, CELL_COLUMNS.indexOf(column), grid);
 }
 
+// Shown under a row's Name field only for receipt-scanned rows that need a
+// second look: a low-OCR-confidence flag, and/or a "did you mean" suggestion
+// matched against this household's own past pantry item names. Neither
+// auto-changes anything — the user applies or dismisses the suggestion, and
+// the confidence flag is just a pointer to what to check first.
+function NameReviewHints({ row, updateRow }: { row: BulkRow; updateRow: (key: string, changes: Partial<BulkRow>) => void }) {
+  if (!row.lowConfidence && !row.suggestedName) return null;
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', fontSize: 11 }}>
+      {row.lowConfidence && (
+        <span style={{ color: color.destructive, fontWeight: 600 }} title="OCR wasn't confident about this line — double-check it">
+          ⚠ Low OCR confidence
+        </span>
+      )}
+      {row.suggestedName && (
+        <span style={{ display: 'flex', gap: 4, alignItems: 'center', color: color.mutedForeground }}>
+          Did you mean &ldquo;{row.suggestedName}&rdquo;?
+          <button
+            type="button"
+            onClick={() => updateRow(row.key, { name: row.suggestedName, suggestedName: undefined })}
+            style={{ ...buttonStyle('ghost'), padding: '1px 6px', fontSize: 11 }}
+          >
+            Use
+          </button>
+          <button
+            type="button"
+            onClick={() => updateRow(row.key, { suggestedName: undefined })}
+            aria-label="Dismiss suggestion"
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: color.mutedForeground, fontSize: 11, padding: '1px 4px' }}
+          >
+            ✕
+          </button>
+        </span>
+      )}
+    </div>
+  );
+}
+
 // Table layout reads fine at desktop widths, but a table wrapped in
 // overflow-x:auto inside a modal just clips columns off-screen on a phone —
 // there's no room to scroll sideways within an already-narrow card. Mobile
@@ -195,6 +250,7 @@ function MobileRows({ rows, updateRow, removeRow }: RowsProps) {
             placeholder="Name"
             style={inputStyle}
           />
+          <NameReviewHints row={row} updateRow={updateRow} />
 
           <div style={{ display: 'flex', gap: 10 }}>
             <input
@@ -298,6 +354,7 @@ function DesktopRows({ rows, updateRow, removeRow, onPasteGrid }: DesktopRowsPro
                   placeholder="e.g. Strawberries"
                   style={{ ...CELL_INPUT_STYLE, minWidth: 150 }}
                 />
+                <NameReviewHints row={row} updateRow={updateRow} />
               </td>
               <td style={CELL_STYLE}>
                 <input
@@ -407,9 +464,14 @@ function DesktopRows({ rows, updateRow, removeRow, onPasteGrid }: DesktopRowsPro
 export function BulkAddModal({
   onSubmit,
   onCancel,
+  existingItemNames = [],
 }: {
   onSubmit: (items: BulkItemInput[]) => Promise<void>;
   onCancel: () => void;
+  /** This household's own past pantry item names, used to suggest a
+   * likely-correct name when a receipt scan comes out garbled (e.g.
+   * "Spicy Fearles" → suggest "Spicy Fearless" if that's been added before). */
+  existingItemNames?: string[];
 }) {
   const isMobile = useIsMobile();
   const { session } = useAuth();
@@ -594,7 +656,7 @@ export function BulkAddModal({
     setError(null);
     setProcessingReceipt(true);
     try {
-      const { rawText } = await ocrProvider.extractText({ kind: 'web-file', file });
+      const { rawText, lines: ocrLines } = await ocrProvider.extractText({ kind: 'web-file', file });
       setDebugRawText(rawText);
       const lines = parseReceiptText(rawText);
 
@@ -615,6 +677,8 @@ export function BulkAddModal({
       setRows((prev) => {
         let next = [...prev];
         for (const line of toAdd) {
+          const confidence = ocrLines ? estimateLineConfidence(line.name, ocrLines) : undefined;
+          const suggestion = suggestKnownName(line.name, existingItemNames);
           const fields = {
             name: line.name,
             purchasePrice: String(line.price),
@@ -623,6 +687,8 @@ export function BulkAddModal({
             // single-line "name price" receipt leaves quantity at its
             // inherited/default value.
             ...(line.quantity !== undefined ? { quantity: String(line.quantity) } : {}),
+            lowConfidence: confidence !== undefined && confidence < LOW_CONFIDENCE_THRESHOLD,
+            suggestedName: suggestion?.name,
           };
           const last = next[next.length - 1];
           // The modal always starts with (and "+ Add row" always leaves)

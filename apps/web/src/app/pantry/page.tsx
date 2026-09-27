@@ -368,7 +368,11 @@ function PantryPageContent() {
           ))}
           {showBulkAdd && (
             <div style={modalOverlayStyle(50)}>
-              <BulkAddModal onCancel={() => setShowBulkAdd(false)} onSubmit={handleBulkAdd} />
+              <BulkAddModal
+                onCancel={() => setShowBulkAdd(false)}
+                onSubmit={handleBulkAdd}
+                existingItemNames={Array.from(new Set(items.map((item) => item.name)))}
+              />
             </div>
           )}
           {editingItem && (
