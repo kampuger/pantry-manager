@@ -95,6 +95,7 @@ export const ocrProvider: IOcrProvider = {
       return {
         rawText: data.text,
         confidence: data.confidence / 100,
+        lines: data.lines.map((line) => ({ text: line.text, confidence: line.confidence })),
       };
     } finally {
       if (objectUrl) {
