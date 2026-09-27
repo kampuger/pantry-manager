@@ -1,8 +1,8 @@
 'use client';
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Papa from 'papaparse';
-import { UNIT_OPTIONS, STORAGE_LOCATION_OPTIONS } from '@pantry/supabase-client';
+import { UNIT_OPTIONS, STORAGE_LOCATION_OPTIONS, checkIsPlatformAdmin } from '@pantry/supabase-client';
 import { computeExpiryDate, parseBulkPasteGrid, resolveCsvHeader, parseReceiptText, CELL_COLUMNS, type CellColumn } from '@pantry/core';
 import { formatExpiryDate } from '@pantry/ui';
 import { openFoodFactsProvider } from '@pantry/product-lookup';
@@ -12,6 +12,8 @@ import { openFoodFactsProvider } from '@pantry/product-lookup';
 // See docs/superpowers/specs/2026-09-27-receipt-ocr-intake-design.md.
 import { ocrProvider } from '@pantry/ocr/src/ocr.web';
 import { useIsMobile } from '@/lib/useIsMobile';
+import { useAuth } from '@/lib/AuthProvider';
+import { supabase } from '@/lib/supabaseClient';
 import { color, radius, cardStyle, inputStyle, buttonStyle } from '@/lib/theme';
 import { BarcodeScanner } from './BarcodeScanner';
 
@@ -86,9 +88,11 @@ interface RowsProps {
 // locking up the tab building thousands of grid rows.
 const MAX_PASTE_ROWS = 200;
 
-// Toggle for the on-screen "raw OCR text" debug panel added while
-// diagnosing receipt-scan issues — flip to true to bring it back.
-const SHOW_RECEIPT_DEBUG = true;
+// localStorage key for the on-screen "raw OCR text" debug panel toggle —
+// a runtime switch (not a code flag) so it can be turned on/off from
+// whatever device is testing a scan, including a phone, without a rebuild
+// or redeploy.
+const RECEIPT_DEBUG_STORAGE_KEY = 'pantry:showReceiptDebug';
 
 // Applies one pasted cell's raw text to a row, for the fixed column order
 // above. Ambiguous or unparsable values leave the existing cell alone
@@ -408,6 +412,8 @@ export function BulkAddModal({
   onCancel: () => void;
 }) {
   const isMobile = useIsMobile();
+  const { session } = useAuth();
+  const [isAdmin, setIsAdmin] = useState(false);
   const [rows, setRows] = useState<BulkRow[]>(() => [emptyRow()]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -415,10 +421,44 @@ export function BulkAddModal({
   const csvInputRef = useRef<HTMLInputElement>(null);
   const receiptInputRef = useRef<HTMLInputElement>(null);
   const [processingReceipt, setProcessingReceipt] = useState(false);
-  // Temporary debug aid: shows exactly what OCR extracted, on-screen, so a
-  // user without access to browser DevTools can screenshot/copy it when a
-  // scan comes out wrong. TODO: remove once receipt parsing is stable.
+
+  useEffect(() => {
+    if (!session) {
+      return;
+    }
+    checkIsPlatformAdmin(supabase)
+      .then(setIsAdmin)
+      .catch(() => setIsAdmin(false));
+  }, [session]);
+
+  // Debug aid: shows exactly what OCR extracted, on-screen, so a user
+  // without access to browser DevTools can screenshot/copy it when a scan
+  // comes out wrong. `showDebug` is a runtime toggle (admin-only — see
+  // `isAdmin` above) persisted to localStorage (see
+  // RECEIPT_DEBUG_STORAGE_KEY) rather than a code flag, so it can be
+  // flipped on/off directly from the device doing the scanning (e.g. a
+  // phone) without a rebuild or redeploy.
+  const [showDebug, setShowDebug] = useState(() => {
+    try {
+      return localStorage.getItem(RECEIPT_DEBUG_STORAGE_KEY) === 'true';
+    } catch {
+      // Private browsing / blocked storage — debug panel just stays off.
+      return false;
+    }
+  });
   const [debugRawText, setDebugRawText] = useState<string | null>(null);
+
+  function toggleDebug() {
+    setShowDebug((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(RECEIPT_DEBUG_STORAGE_KEY, String(next));
+      } catch {
+        // Private browsing / blocked storage — toggle still works for this session.
+      }
+      return next;
+    });
+  }
   // Session-only bookkeeping (never submitted, never persisted — the "no
   // barcode is ever persisted" rule only ever meant the database) so that
   // scanning the same barcode again in this session merges into the row
@@ -703,6 +743,15 @@ export function BulkAddModal({
               Scan barcode
             </button>
           )}
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={toggleDebug}
+              style={{ ...buttonStyle('ghost'), padding: '8px 14px', borderRadius: radius.pill, fontSize: 12 }}
+            >
+              {showDebug ? 'Hide OCR debug' : 'Show OCR debug'}
+            </button>
+          )}
         </div>
 
         {showScanner && (
@@ -725,7 +774,7 @@ export function BulkAddModal({
           </p>
         )}
 
-        {SHOW_RECEIPT_DEBUG && debugRawText && (
+        {isAdmin && showDebug && debugRawText && (
           <div style={{ display: 'grid', gap: 6 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: 12, fontWeight: 600, color: color.mutedForeground }}>
