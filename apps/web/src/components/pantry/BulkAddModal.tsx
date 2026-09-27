@@ -571,8 +571,7 @@ export function BulkAddModal({
       setRows((prev) => {
         let next = [...prev];
         for (const line of toAdd) {
-          const row = {
-            ...emptyRow(next[next.length - 1]),
+          const fields = {
             name: line.name,
             purchasePrice: String(line.price),
             // Only set when the receipt printed a real Qty column (a
@@ -581,7 +580,16 @@ export function BulkAddModal({
             // inherited/default value.
             ...(line.quantity !== undefined ? { quantity: String(line.quantity) } : {}),
           };
-          next = [...next, row];
+          const last = next[next.length - 1];
+          // The modal always starts with (and "+ Add row" always leaves)
+          // one blank scratch row at the end — fill that one first rather
+          // than always appending, so the first scanned item doesn't skip
+          // row 1 (same fix already applied to barcode scanning).
+          if (last.name.trim() === '') {
+            next = [...next.slice(0, -1), { ...last, ...fields }];
+          } else {
+            next = [...next, { ...emptyRow(last), ...fields }];
+          }
         }
         return next;
       });
