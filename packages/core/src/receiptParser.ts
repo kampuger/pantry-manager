@@ -1,7 +1,7 @@
 export interface ParsedReceiptLine {
   name: string;
   price: number;
-  /** Only set when the source was a two-line "Qty Code Price Amount" row (see DATA_LINE_PATTERN) — single-line receipts never carry a quantity. */
+  /** Set when the source line(s) carried an explicit quantity — either a two-line "Qty Code Price Amount" row (DATA_LINE_PATTERN) or a single-line "Name UnitCost Qty Amount" row (SINGLE_LINE_ITEM_PATTERN). Plain "Name Price" lines never carry a quantity. */
   quantity?: number;
 }
 
@@ -35,10 +35,26 @@ const PRICE_PATTERN = /(?:[$₱]\s*)?(\d{1,3}(?:[,.]\d{3})*|\d+)[.,](\d{2})\s*[A
 // an underscore ('4_A800024575250 ...').
 const DATA_LINE_PATTERN = /^(\d+)[\s_'"]*\S+\s+(?:\d{1,3}(?:[,.]\d{3})*|\d+)[.,]\d{2}\s+(\d{1,3}(?:[,.]\d{3})*|\d+)[.,](\d{2})\s*$/;
 
+// Matches a single-line "Description  UnitCost  Qty  Amount" row — some
+// invoice-style receipts (found via a live test — a delivery-service VAT
+// invoice) print all four columns on one line instead of splitting name
+// and data across two lines like DATA_LINE_PATTERN. Group 1 is the name
+// (lazy, so it only grows past the first UnitCost-shaped number it hits);
+// group 2 is the quantity; groups 3/4 are the AMOUNT (last column) — same
+// "use Amount, not UnitCost" rule as DATA_LINE_PATTERN, for the same
+// reason (purchasePrice is the total paid, not a per-unit rate). Without
+// this pattern, PRICE_PATTERN below still matches (it only anchors on the
+// trailing price), but everything before that trailing price — including
+// the UnitCost and Qty columns — gets swept into "name" as garbage.
+const SINGLE_LINE_ITEM_PATTERN =
+  /^(.+?)\s+(?:\d{1,3}(?:[,.]\d{3})*|\d+)[.,]\d{2}\s+(\d+)\s+(\d{1,3}(?:[,.]\d{3})*|\d+)[.,](\d{2})\s*[A-Za-z]*\s*$/;
+
 const DENYLIST_KEYWORDS = [
   'total',
   'subtotal',
   'tax',
+  'vat',
+  'sales',
   'cash',
   'change',
   'balance',
@@ -46,6 +62,7 @@ const DENYLIST_KEYWORDS = [
   'visa',
   'mastercard',
   'amount due',
+  'account',
   'tend',
 ];
 
@@ -71,6 +88,22 @@ export function parseReceiptText(rawText: string): ParsedReceiptLine[] {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (containsDenylistedKeyword(line)) continue;
+
+    // Case C: "Name UnitCost Qty Amount" all on one line — checked before
+    // Case A below, since Case A would otherwise match the same line (it
+    // only looks for a trailing price) and dump the UnitCost/Qty columns
+    // into the name.
+    const singleLineItemMatch = line.match(SINGLE_LINE_ITEM_PATTERN);
+    if (singleLineItemMatch) {
+      const name = stripFillCharacters(singleLineItemMatch[1]);
+      if (name !== '') {
+        const quantity = Number(singleLineItemMatch[2]);
+        const integerPart = stripSeparators(singleLineItemMatch[3]);
+        const price = Number(`${integerPart}.${singleLineItemMatch[4]}`);
+        results.push({ name, price, quantity });
+        continue;
+      }
+    }
 
     // Case A: name and price on the same line (e.g. "MILK 4.99").
     const sameLineMatch = line.match(PRICE_PATTERN);

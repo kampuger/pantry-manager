@@ -276,4 +276,41 @@ describe('parseReceiptText', () => {
       { name: 'STRING CHEESE 16PK', price: 7.98 },
     ]);
   });
+
+  it('extracts single-line "Name UnitCost Qty Amount" items from a real-world VAT invoice, ignoring the summary footer', () => {
+    // The actual raw OCR text Tesseract produced from a delivery-service VAT
+    // invoice: every item is printed as Description/UnitCost/Qty/Amount all
+    // on ONE line (unlike the two-line format above), with a stray OCR
+    // misread of a checkmark as a trailing "V"/"Vv" letter, and a VAT-summary
+    // footer (Gross Sales, VATable Sales, Customer Account, etc.) that must
+    // not become spurious rows. Leading garbage characters on each item line
+    // ("Ta ", "™ ", "AN ", "OW ", "| ") are OCR noise from the physical
+    // receipt itself, not a parser bug — not fixable via regex, same
+    // accepted degradation as the noisy-OCR test above.
+    const text = [
+      'Description U.Cost Qty Amount',
+      'Store BEN \'',
+      'Ta Spicy Fearles 400.00 1 400.00 V',
+      '™ Clam Chowder 230.00 1 230.00 V',
+      'AN Curly Frie 185.00 1 185.00 V',
+      'OW SteakSSS 410.00 1 410.00 Vv',
+      '| CB Fr Van 235.00 1 235.00 V',
+      'y ~ Gross Sales 1,460.00',
+      'Price Excl. of VAT 1,303.57',
+      'Add: 12% VAT 156.43',
+      'Total Amount 1,460.00',
+      'yA Customer Account -1,460.00',
+      'Nae VATable Sales 1,303.57 156.43',
+      'aE VAT Exempt Sales 0.00 0.00',
+      'on =, _ — lero-Rated Sales 0.00 0.00',
+    ].join('\n');
+
+    expect(parseReceiptText(text)).toEqual([
+      { name: 'Ta Spicy Fearles', price: 400.0, quantity: 1 },
+      { name: '™ Clam Chowder', price: 230.0, quantity: 1 },
+      { name: 'AN Curly Frie', price: 185.0, quantity: 1 },
+      { name: 'OW SteakSSS', price: 410.0, quantity: 1 },
+      { name: '| CB Fr Van', price: 235.0, quantity: 1 },
+    ]);
+  });
 });
