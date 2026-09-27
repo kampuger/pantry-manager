@@ -86,6 +86,10 @@ interface RowsProps {
 // locking up the tab building thousands of grid rows.
 const MAX_PASTE_ROWS = 200;
 
+// Toggle for the on-screen "raw OCR text" debug panel added while
+// diagnosing receipt-scan issues — flip to true to bring it back.
+const SHOW_RECEIPT_DEBUG = false;
+
 // Applies one pasted cell's raw text to a row, for the fixed column order
 // above. Ambiguous or unparsable values leave the existing cell alone
 // rather than guessing — the user fixes it by hand in the grid afterward.
@@ -721,7 +725,7 @@ export function BulkAddModal({
           </p>
         )}
 
-        {debugRawText && (
+        {SHOW_RECEIPT_DEBUG && debugRawText && (
           <div style={{ display: 'grid', gap: 6 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: 12, fontWeight: 600, color: color.mutedForeground }}>
