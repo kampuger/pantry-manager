@@ -88,7 +88,7 @@ const MAX_PASTE_ROWS = 200;
 
 // Toggle for the on-screen "raw OCR text" debug panel added while
 // diagnosing receipt-scan issues — flip to true to bring it back.
-const SHOW_RECEIPT_DEBUG = false;
+const SHOW_RECEIPT_DEBUG = true;
 
 // Applies one pasted cell's raw text to a row, for the fixed column order
 // above. Ambiguous or unparsable values leave the existing cell alone
