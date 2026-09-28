@@ -8,7 +8,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/lib/AuthProvider';
 import { useHousehold } from '@/lib/useHousehold';
 import { color, radius, shadow } from '@/lib/theme';
-import { NAV_ITEMS, IconAdmin } from './navItems';
+import { NAV_ITEMS, IconAdmin, IconSettings } from './navItems';
 import { NotificationBell } from './notifications/NotificationBell';
 
 export const MOBILE_TOP_BAR_HEIGHT = 56;
@@ -197,6 +197,27 @@ export function MobileNav() {
                   >
                     <IconAdmin />
                     Admin
+                  </Link>
+                )}
+                {isAdmin && (
+                  <Link
+                    href="/admin/settings"
+                    onClick={() => setNavOpen(false)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 12,
+                      padding: '12px 14px',
+                      borderRadius: radius.sm,
+                      fontSize: 15,
+                      fontWeight: pathname === '/admin/settings' ? 700 : 500,
+                      textDecoration: 'none',
+                      color: pathname === '/admin/settings' ? color.primary : color.foreground,
+                      background: pathname === '/admin/settings' ? color.muted : 'transparent',
+                    }}
+                  >
+                    <IconSettings />
+                    Settings
                   </Link>
                 )}
               </nav>

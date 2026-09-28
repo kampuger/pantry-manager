@@ -133,6 +133,17 @@ export interface Database {
         Update: Partial<Database['public']['Tables']['platform_admins']['Row']>;
         Relationships: [];
       };
+      app_settings: {
+        Row: {
+          id: boolean;
+          email_notifications_enabled: boolean;
+          updated_by: string | null;
+          updated_at: string;
+        };
+        Insert: Partial<Database['public']['Tables']['app_settings']['Row']>;
+        Update: Partial<Database['public']['Tables']['app_settings']['Row']>;
+        Relationships: [];
+      };
       access_applications: {
         Row: {
           id: string;

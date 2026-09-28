@@ -7,3 +7,4 @@ export * from './accessApplications';
 export * from './groceryList';
 export * from './constants';
 export * from './reminders';
+export * from './appSettings';

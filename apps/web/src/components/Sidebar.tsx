@@ -9,7 +9,7 @@ import { useAuth } from '@/lib/AuthProvider';
 import { useHousehold } from '@/lib/useHousehold';
 import { color, radius } from '@/lib/theme';
 import { NotificationBell } from './notifications/NotificationBell';
-import { NAV_ITEMS, IconAdmin } from './navItems';
+import { NAV_ITEMS, IconAdmin, IconSettings } from './navItems';
 
 export function Sidebar() {
   const { session, loading, signOut } = useAuth();
@@ -118,6 +118,28 @@ export function Sidebar() {
           >
             <IconAdmin />
             Admin
+          </Link>
+        )}
+        {isAdmin && (
+          <Link
+            href="/admin/settings"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              padding: '10px 12px',
+              marginBottom: 4,
+              borderRadius: radius.sm,
+              fontSize: 14,
+              fontWeight: pathname === '/admin/settings' ? 600 : 500,
+              textDecoration: 'none',
+              color: pathname === '/admin/settings' ? color.primary : color.mutedForeground,
+              background: pathname === '/admin/settings' ? color.muted : 'transparent',
+              transition: 'background 150ms ease, color 150ms ease',
+            }}
+          >
+            <IconSettings />
+            Settings
           </Link>
         )}
       </div>

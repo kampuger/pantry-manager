@@ -83,6 +83,18 @@ Deno.serve(async (req) => {
     }
   }
 
+  const { data: appSettings } = await admin
+    .from('app_settings')
+    .select('email_notifications_enabled')
+    .limit(1)
+    .maybeSingle();
+  if (appSettings && appSettings.email_notifications_enabled === false) {
+    return new Response(JSON.stringify({ status: 'disabled_globally' }), {
+      status: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
   const { error: refreshError } = await admin.rpc('refresh_household_reminders', {
     p_household_id: householdId,
   });
