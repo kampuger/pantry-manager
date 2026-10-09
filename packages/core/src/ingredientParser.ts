@@ -17,6 +17,13 @@ const UNIT_ALIASES: Record<string, string> = {
   cup: 'cups', cups: 'cups',
   stick: 'stick', sticks: 'stick',
   oz: 'oz', ounce: 'oz', ounces: 'oz',
+  // Container words with no fixed size (unlike tbsp/cup/etc) — treated as a
+  // plain countable unit, same as "piece". A non-standard container like
+  // "pitcher" is deliberately left unmapped; see parseIngredientLine's
+  // unrecognized-unit fallback.
+  can: 'pcs', cans: 'pcs',
+  jar: 'pcs', jars: 'pcs',
+  bottle: 'pcs', bottles: 'pcs',
 };
 
 export function parseIngredientLine(rawLine: string): ParsedIngredientLine {

@@ -49,6 +49,23 @@ describe('matchRecipeIngredients', () => {
     expect(result.shortfall).toBeNull();
   });
 
+  it('does not claim availability when a quantity was given but the unit word is unrecognized (e.g. "pitcher")', () => {
+    const stock = [{ name: 'tomato sauce', quantity: 2, unit: 'pcs' }];
+    const [result] = matchRecipeIngredients('3 pitcher tomato sauce', stock);
+
+    expect(result.status).toBe('MISSING');
+    expect(result.matchedStock).toBeDefined();
+    expect(result.shortfall).toBeNull();
+  });
+
+  it('numerically compares container words like "cans" against pcs stock', () => {
+    const stock = [{ name: 'tomato sauce', quantity: 2, unit: 'pcs' }];
+    const [result] = matchRecipeIngredients('3 cans tomato sauce', stock);
+
+    expect(result.status).toBe('PARTIALLY_AVAILABLE');
+    expect(result.shortfall).toEqual({ quantity: 1, unit: 'pcs' });
+  });
+
   it('matches names case-insensitively and via substring (simple pluralization)', () => {
     const stock = [{ name: 'Onions', quantity: 3, unit: 'pcs' }];
     const [result] = matchRecipeIngredients('1 pcs onion', stock);

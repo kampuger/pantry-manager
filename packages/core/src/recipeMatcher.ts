@@ -52,6 +52,14 @@ export function matchRecipeIngredients(recipeText: string, stock: PantryStockIte
       return { rawLine, name, quantity, unit, status, shortfall, matchedStock };
     }
 
+    if (quantity !== null) {
+      // A quantity was given but the unit word wasn't recognized (e.g. "3
+      // pitcher tomato sauce") — unlike "salt to taste" below, this line DOES
+      // require a specific amount, we just can't verify it against stock. Stay
+      // conservative rather than claim availability off mere presence.
+      return { rawLine, name, quantity, unit, status: 'MISSING' as const, shortfall: null, matchedStock };
+    }
+
     // No parseable quantity/unit on this recipe line (e.g. "salt to taste") —
     // presence in stock at all counts as available, and there's no required
     // amount to compute a shortfall against.

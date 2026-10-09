@@ -40,4 +40,30 @@ describe('parseIngredientLine', () => {
       name: 'large eggs',
     });
   });
+
+  it('treats common container words as discrete pcs units', () => {
+    expect(parseIngredientLine('2 cans tomato sauce')).toEqual({
+      quantity: 2,
+      unit: 'pcs',
+      name: 'tomato sauce',
+    });
+    expect(parseIngredientLine('1 jar peanut butter')).toEqual({
+      quantity: 1,
+      unit: 'pcs',
+      name: 'peanut butter',
+    });
+    expect(parseIngredientLine('3 bottles soy sauce')).toEqual({
+      quantity: 3,
+      unit: 'pcs',
+      name: 'soy sauce',
+    });
+  });
+
+  it('still folds a non-standard unit like "pitcher" into the name, since it has no fixed size', () => {
+    expect(parseIngredientLine('3 pitcher tomato sauce')).toEqual({
+      quantity: 3,
+      unit: null,
+      name: 'pitcher tomato sauce',
+    });
+  });
 });
