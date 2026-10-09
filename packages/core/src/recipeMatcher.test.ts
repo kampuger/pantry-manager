@@ -19,23 +19,34 @@ describe('matchRecipeIngredients', () => {
     const stock = [{ name: 'rice', quantity: 2, unit: 'kg' }];
     const [result] = matchRecipeIngredients('1 kg rice', stock);
 
-    expect(result).toMatchObject({ name: 'rice', quantity: 1, unit: 'kg', status: 'FULLY_AVAILABLE' });
+    expect(result).toMatchObject({ name: 'rice', quantity: 1, unit: 'kg', status: 'FULLY_AVAILABLE', shortfall: null });
     expect(result.matchedStock).toEqual({ name: 'rice', quantity: 2, unit: 'kg' });
   });
 
-  it('marks PARTIALLY_AVAILABLE when stock is nonzero but insufficient', () => {
+  it('marks PARTIALLY_AVAILABLE when stock is nonzero but insufficient, and reports the shortfall', () => {
     const stock = [{ name: 'rice', quantity: 0.5, unit: 'kg' }];
     const [result] = matchRecipeIngredients('1 kg rice', stock);
 
     expect(result.status).toBe('PARTIALLY_AVAILABLE');
+    expect(result.shortfall).toEqual({ quantity: 0.5, unit: 'kg' });
   });
 
-  it('marks MISSING when no pantry item matches the ingredient name', () => {
+  it('marks MISSING when no pantry item matches the ingredient name, with the shortfall as the full required amount', () => {
     const stock = [{ name: 'rice', quantity: 2, unit: 'kg' }];
     const [result] = matchRecipeIngredients('2 pcs mango', stock);
 
     expect(result.status).toBe('MISSING');
     expect(result.matchedStock).toBeUndefined();
+    expect(result.shortfall).toEqual({ quantity: 2, unit: 'pcs' });
+  });
+
+  it('leaves the shortfall null when units cross dimensions with no known density, instead of a fabricated number', () => {
+    const stock = [{ name: 'wood chips', quantity: 1, unit: 'lbs' }];
+    const [result] = matchRecipeIngredients('2 tbsp wood chips', stock);
+
+    expect(result.status).toBe('MISSING');
+    expect(result.matchedStock).toBeDefined();
+    expect(result.shortfall).toBeNull();
   });
 
   it('matches names case-insensitively and via substring (simple pluralization)', () => {
@@ -50,7 +61,7 @@ describe('matchRecipeIngredients', () => {
     const stock = [{ name: 'salt', quantity: 1, unit: 'kg' }];
     const [result] = matchRecipeIngredients('salt to taste', stock);
 
-    expect(result).toMatchObject({ quantity: null, unit: null, status: 'FULLY_AVAILABLE' });
+    expect(result).toMatchObject({ quantity: null, unit: null, status: 'FULLY_AVAILABLE', shortfall: null });
   });
 
   it('treats a matched item with zero stock and no parsed quantity as MISSING', () => {

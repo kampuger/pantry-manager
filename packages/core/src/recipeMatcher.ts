@@ -1,5 +1,5 @@
 import { parseIngredientLine } from './ingredientParser';
-import { compareAvailability, type AvailabilityStatus } from './unitConversion';
+import { evaluateAvailability, type AvailabilityShortfall, type AvailabilityStatus } from './unitConversion';
 
 export interface PantryStockItem {
   name: string;
@@ -13,6 +13,8 @@ export interface MatchedIngredient {
   quantity: number | null;
   unit: string | null;
   status: AvailabilityStatus;
+  /** How much more is needed, in the pantry's stock unit (or the recipe's own unit if nothing is in stock at all). Null when fully available, when the recipe line has no parseable quantity, or when the units can't be compared. */
+  shortfall: AvailabilityShortfall | null;
   matchedStock?: PantryStockItem;
 }
 
@@ -41,17 +43,19 @@ export function matchRecipeIngredients(recipeText: string, stock: PantryStockIte
     const matchedStock = findMatch(name, stock);
 
     if (!matchedStock) {
-      return { rawLine, name, quantity, unit, status: 'MISSING' as const };
+      const shortfall = quantity !== null && unit !== null ? { quantity, unit } : null;
+      return { rawLine, name, quantity, unit, status: 'MISSING' as const, shortfall };
     }
 
     if (quantity !== null && unit !== null) {
-      const status = compareAvailability(quantity, unit, matchedStock.quantity, matchedStock.unit, name);
-      return { rawLine, name, quantity, unit, status, matchedStock };
+      const { status, shortfall } = evaluateAvailability(quantity, unit, matchedStock.quantity, matchedStock.unit, name);
+      return { rawLine, name, quantity, unit, status, shortfall, matchedStock };
     }
 
     // No parseable quantity/unit on this recipe line (e.g. "salt to taste") —
-    // presence in stock at all counts as available.
+    // presence in stock at all counts as available, and there's no required
+    // amount to compute a shortfall against.
     const status: AvailabilityStatus = matchedStock.quantity > 0 ? 'FULLY_AVAILABLE' : 'MISSING';
-    return { rawLine, name, quantity, unit, status, matchedStock };
+    return { rawLine, name, quantity, unit, status, shortfall: null, matchedStock };
   });
 }

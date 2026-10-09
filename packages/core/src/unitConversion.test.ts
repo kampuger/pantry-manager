@@ -1,4 +1,4 @@
-import { toCanonical, compareAvailability } from './unitConversion';
+import { toCanonical, compareAvailability, evaluateAvailability } from './unitConversion';
 
 describe('toCanonical', () => {
   it('converts weight units to grams', () => {
@@ -35,5 +35,42 @@ describe('compareAvailability', () => {
 
   it('returns MISSING when dimensions differ and no density is known', () => {
     expect(compareAvailability(2, 'tbsp', 1, 'lbs', 'unobtainium')).toBe('MISSING');
+  });
+});
+
+describe('evaluateAvailability', () => {
+  it('returns a null shortfall when fully available', () => {
+    expect(evaluateAvailability(500, 'g', 1, 'kg', 'flour')).toEqual({
+      status: 'FULLY_AVAILABLE',
+      shortfall: null,
+    });
+  });
+
+  it('computes the shortfall in the stock unit when partially available in the same dimension', () => {
+    expect(evaluateAvailability(2, 'kg', 500, 'g', 'flour')).toEqual({
+      status: 'PARTIALLY_AVAILABLE',
+      shortfall: { quantity: 1500, unit: 'g' },
+    });
+  });
+
+  it('computes the full required amount as the shortfall when stock is zero', () => {
+    expect(evaluateAvailability(1, 'kg', 0, 'g', 'flour')).toEqual({
+      status: 'MISSING',
+      shortfall: { quantity: 1000, unit: 'g' },
+    });
+  });
+
+  it('bridges volume to weight via density when computing the shortfall (2 cups sugar vs 0.3kg in stock)', () => {
+    const result = evaluateAvailability(2, 'cups', 0.3, 'kg', 'sugar');
+    expect(result.status).toBe('PARTIALLY_AVAILABLE');
+    expect(result.shortfall?.unit).toBe('kg');
+    expect(result.shortfall?.quantity).toBeCloseTo(0.1, 2);
+  });
+
+  it('returns a null shortfall when dimensions differ and no density is known, rather than a fabricated number', () => {
+    expect(evaluateAvailability(2, 'tbsp', 1, 'lbs', 'unobtainium')).toEqual({
+      status: 'MISSING',
+      shortfall: null,
+    });
   });
 });

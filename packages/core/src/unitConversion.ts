@@ -46,22 +46,53 @@ export function toCanonical(
   return { value: quantity, dimension: 'DISCRETE' };
 }
 
-export function compareAvailability(
+function fromCanonical(value: number, dimension: Dimension, unit: string): number {
+  if (dimension === 'WEIGHT') return value / WEIGHT_TO_GRAMS[unit];
+  if (dimension === 'VOLUME') return value / VOLUME_TO_ML[unit];
+  return value;
+}
+
+// Rounded to 2 decimals for display — pantry quantities carry more precision
+// (numeric(12,3) in the DB) than is useful to show as a "buy this much more"
+// recommendation.
+function roundForDisplay(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+export interface AvailabilityShortfall {
+  quantity: number;
+  unit: string;
+}
+
+export interface AvailabilityResult {
+  status: AvailabilityStatus;
+  shortfall: AvailabilityShortfall | null;
+}
+
+/**
+ * Like compareAvailability, but also computes how much more of an ingredient
+ * is needed — expressed in the pantry's own stock unit, since that's the unit
+ * you'd actually go buy or weigh out more of. Returns a null shortfall (rather
+ * than a fabricated number) when the two units' dimensions can't be bridged
+ * for this ingredient — that's a "can't compare, check manually" case, not a
+ * computable deficit.
+ */
+export function evaluateAvailability(
   requiredQty: number,
   requiredUnit: string,
   stockQty: number,
   stockUnit: string,
   ingredientName: string
-): AvailabilityStatus {
+): AvailabilityResult {
   const required = toCanonical(requiredQty, requiredUnit);
   const stock = toCanonical(stockQty, stockUnit);
-  if (!required || !stock) return 'MISSING';
+  if (!required || !stock) return { status: 'MISSING', shortfall: null };
 
   let requiredInStockDimension = required.value;
 
   if (required.dimension !== stock.dimension) {
     const density = INGREDIENT_DENSITY_G_PER_ML[ingredientName.toLowerCase()];
-    if (!density) return 'MISSING';
+    if (!density) return { status: 'MISSING', shortfall: null };
 
     requiredInStockDimension =
       required.dimension === 'VOLUME'
@@ -69,7 +100,23 @@ export function compareAvailability(
         : required.value / density; // g -> ml
   }
 
-  if (stock.value >= requiredInStockDimension) return 'FULLY_AVAILABLE';
-  if (stock.value > 0) return 'PARTIALLY_AVAILABLE';
-  return 'MISSING';
+  if (stock.value >= requiredInStockDimension) return { status: 'FULLY_AVAILABLE', shortfall: null };
+
+  const shortfallCanonical = requiredInStockDimension - stock.value;
+  const shortfall: AvailabilityShortfall = {
+    quantity: roundForDisplay(fromCanonical(shortfallCanonical, stock.dimension, stockUnit)),
+    unit: stockUnit,
+  };
+
+  return { status: stock.value > 0 ? 'PARTIALLY_AVAILABLE' : 'MISSING', shortfall };
+}
+
+export function compareAvailability(
+  requiredQty: number,
+  requiredUnit: string,
+  stockQty: number,
+  stockUnit: string,
+  ingredientName: string
+): AvailabilityStatus {
+  return evaluateAvailability(requiredQty, requiredUnit, stockQty, stockUnit, ingredientName).status;
 }

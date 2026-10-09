@@ -94,6 +94,20 @@ function IngredientMatcher({ householdId }: { householdId: string }) {
                         In stock: {r.matchedStock.quantity} {r.matchedStock.unit} {r.matchedStock.name}
                       </div>
                     )}
+                    {r.status !== 'FULLY_AVAILABLE' &&
+                      (r.shortfall ? (
+                        <div style={{ color: color.mutedForeground, fontSize: 13 }}>
+                          {r.matchedStock ? 'Short by ' : 'Need '}
+                          {r.shortfall.quantity} {r.shortfall.unit}
+                          {!r.matchedStock && ' — not in your pantry'}
+                        </div>
+                      ) : (
+                        r.matchedStock && (
+                          <div style={{ color: color.mutedForeground, fontSize: 13 }}>
+                            Can&apos;t compare units for this ingredient — check manually.
+                          </div>
+                        )
+                      ))}
                   </div>
                   <span style={badgeStyle(status.tone)}>{status.label}</span>
                 </div>
