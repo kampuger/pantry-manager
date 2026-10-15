@@ -83,7 +83,8 @@ alter table household_members add column sms_enabled boolean not null default fa
 alter table households        add column sms_enabled boolean not null default false;
 alter table app_settings      add column sms_notifications_enabled boolean not null default false;
 
--- Per-channel, per-user, per-day dedupe and send log.
+-- Per-household, per-channel, per-user, per-day dedupe and send log. The
+-- household is part of the key so a member of two households gets both digests.
 create table notification_deliveries (
   id uuid primary key default gen_random_uuid(),
   household_id uuid not null references households(id) on delete cascade,
@@ -94,7 +95,7 @@ create table notification_deliveries (
   provider_message_id text,
   error text,
   created_at timestamptz not null default now(),
-  unique (user_id, channel, digest_date)
+  unique (household_id, user_id, channel, digest_date)
 );
 ```
 
@@ -155,7 +156,9 @@ automatically (the digest skips members without a verified number).
 
 ## Provider abstraction
 
-`supabase/functions/_shared/sms/`:
+`packages/core/src/smsProvider.ts` (pure, `fetch` injected, so jest can test it and
+the Edge Functions import it by relative path, as they already do for
+`notificationDigest.ts`):
 
 ```ts
 interface SmsProvider {
@@ -164,11 +167,11 @@ interface SmsProvider {
 }
 ```
 
-- `textbee.ts` implements it with `POST https://api.textbee.dev/api/v1/gateway/send-sms`,
+- The TextBee implementation uses `POST https://api.textbee.dev/api/v1/gateway/send-sms`,
   header `x-api-key: TEXTBEE_API_KEY`, body `{ recipients: [to], message: text }`.
   TextBee's documented rate limit is 60 requests a minute, so sends are
   sequential. Digest volume for a household is far below that.
-- `index.ts` picks the provider from the `SMS_PROVIDER` secret (default
+- `createSmsProvider(env, fetch)` picks the provider from the `SMS_PROVIDER` secret (default
   `textbee`). Anything unknown fails loudly at startup.
 - Secrets: `TEXTBEE_API_KEY`, `SMS_PROVIDER`.
 
