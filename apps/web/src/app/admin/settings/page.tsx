@@ -2,7 +2,12 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { checkIsPlatformAdmin, getAppSettings, setEmailNotificationsEnabled } from '@pantry/supabase-client';
+import {
+  checkIsPlatformAdmin,
+  getAppSettings,
+  setEmailNotificationsEnabled,
+  setSmsNotificationsEnabled,
+} from '@pantry/supabase-client';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/lib/AuthProvider';
 import { color, cardStyle, labelStyle } from '@/lib/theme';
@@ -35,6 +40,7 @@ export default function AdminSettingsPage() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [emailNotificationsEnabled, setEmailNotificationsEnabledState] = useState(true);
+  const [smsNotificationsEnabled, setSmsNotificationsEnabledState] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -48,7 +54,10 @@ export default function AdminSettingsPage() {
         setIsAdmin(ok);
         if (ok) {
           getAppSettings(supabase)
-            .then((settings) => setEmailNotificationsEnabledState(settings.emailNotificationsEnabled))
+            .then((settings) => {
+              setEmailNotificationsEnabledState(settings.emailNotificationsEnabled);
+              setSmsNotificationsEnabledState(settings.smsNotificationsEnabled);
+            })
             .catch((err) => setLoadError(err instanceof Error ? err.message : 'Failed to load settings'));
         }
       })
@@ -63,6 +72,21 @@ export default function AdminSettingsPage() {
     try {
       await setEmailNotificationsEnabled(supabase, next, session.user.id);
       setEmailNotificationsEnabledState(next);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Failed to update setting');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleSmsToggle() {
+    if (!session) return;
+    const next = !smsNotificationsEnabled;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await setSmsNotificationsEnabled(supabase, next, session.user.id);
+      setSmsNotificationsEnabledState(next);
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Failed to update setting');
     } finally {
@@ -118,6 +142,25 @@ export default function AdminSettingsPage() {
             <span style={{ display: 'block', fontSize: 13, color: color.mutedForeground, fontWeight: 400, marginTop: 2 }}>
               When off, no household&apos;s expiry reminder digest emails go out, regardless of each household&apos;s own
               schedule or each member&apos;s notification preference.
+            </span>
+          </span>
+        </label>
+      </section>
+
+      <section style={{ ...cardStyle, padding: 20, display: 'grid', gap: 12 }}>
+        <label style={{ ...labelStyle, display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={smsNotificationsEnabled}
+            disabled={saving}
+            onChange={handleSmsToggle}
+            style={{ marginTop: 3 }}
+          />
+          <span>
+            <span style={{ display: 'block', fontWeight: 600, color: color.foreground }}>SMS notifications</span>
+            <span style={{ display: 'block', fontSize: 13, color: color.mutedForeground, fontWeight: 400, marginTop: 2 }}>
+              When off, no SMS goes out and phone numbers cannot be verified, regardless of each household&apos;s or
+              member&apos;s SMS setting. Needs the gateway phone online and the TEXTBEE_API_KEY secret set.
             </span>
           </span>
         </label>

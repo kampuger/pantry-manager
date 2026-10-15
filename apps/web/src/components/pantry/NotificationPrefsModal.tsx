@@ -12,6 +12,7 @@ import { useAuth } from '@/lib/AuthProvider';
 import { supabase } from '@/lib/supabaseClient';
 import { color, cardStyle, inputStyle, buttonStyle, labelStyle } from '@/lib/theme';
 import { emitNotificationsChanged } from '@/lib/notificationEvents';
+import { SmsPrefsSection } from './SmsPrefsSection';
 
 export function NotificationPrefsModal({
   householdId,
@@ -133,6 +134,8 @@ export function NotificationPrefsModal({
               />
               Notify me about expiring items (in-app and email)
             </label>
+
+            <SmsPrefsSection householdId={householdId} isAdmin={isAdmin} />
 
             {isAdmin && (
               <>
