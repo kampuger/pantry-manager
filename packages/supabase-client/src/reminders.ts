@@ -42,7 +42,7 @@ export async function getPantryItemReminders(
 export async function triggerRemindersNow(
   client: SupabaseClient<Database>,
   householdId: string
-): Promise<{ status: string }> {
+): Promise<{ status: string; sms?: { status: string } }> {
   const { data, error } = await client.functions.invoke('compute-and-send-reminders', {
     body: { household_id: householdId },
   });
