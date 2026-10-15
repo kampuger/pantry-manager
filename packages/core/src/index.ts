@@ -6,6 +6,7 @@ export * from './freshness';
 export * from './recipeMatcher';
 export * from './expiry';
 export * from './notificationDigest';
+export * from './phoneNumber';
 export * from './bulkPaste';
 export * from './bulkRowColumns';
 export * from './csvHeaders';
