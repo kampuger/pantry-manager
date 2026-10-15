@@ -113,3 +113,14 @@ export async function setHouseholdSmsEnabled(
     throw new Error('You do not have permission to change SMS settings for this household.');
   }
 }
+
+/**
+ * Whether the platform admin has SMS switched on app-wide. `app_settings` is
+ * readable by platform admins only, so members learn this through a
+ * security-definer function that exposes just that one boolean.
+ */
+export async function getSmsAvailable(client: SupabaseClient<Database>): Promise<boolean> {
+  const { data, error } = await client.rpc('sms_available', {});
+  if (error) throw error;
+  return data === true;
+}

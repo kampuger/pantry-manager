@@ -5,6 +5,7 @@ import {
   getHouseholdSmsEnabled,
   getMemberSmsEnabled,
   getMyPhoneNumber,
+  getSmsAvailable,
   removeMyPhoneNumber,
   requestPhoneVerification,
   setHouseholdSmsEnabled,
@@ -143,5 +144,21 @@ describe('member and household SMS switches', () => {
     await expect(setHouseholdSmsEnabled(none.client, 'house-1', true)).rejects.toThrow(
       'You do not have permission to change SMS settings for this household.'
     );
+  });
+});
+
+describe('getSmsAvailable', () => {
+  it('reads the app-wide SMS switch through the sms_available function', async () => {
+    const rpc = jest.fn(async () => ({ data: true, error: null }));
+    const client = { rpc } as unknown as SupabaseClient<Database>;
+    expect(await getSmsAvailable(client)).toBe(true);
+    expect(rpc).toHaveBeenCalledWith('sms_available', {});
+  });
+
+  it('treats a missing value as off and throws on error', async () => {
+    const off = { rpc: async () => ({ data: null, error: null }) } as unknown as SupabaseClient<Database>;
+    expect(await getSmsAvailable(off)).toBe(false);
+    const bad = { rpc: async () => ({ data: null, error: new Error('boom') }) } as unknown as SupabaseClient<Database>;
+    await expect(getSmsAvailable(bad)).rejects.toThrow('boom');
   });
 });

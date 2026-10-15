@@ -6,6 +6,7 @@ import {
   getHouseholdSmsEnabled,
   getMemberSmsEnabled,
   getMyPhoneNumber,
+  getSmsAvailable,
   removeMyPhoneNumber,
   requestPhoneVerification,
   setHouseholdSmsEnabled,
@@ -20,10 +21,19 @@ function maskPhone(phoneE164: string): string {
   return `${phoneE164.slice(0, 3)}••••••${phoneE164.slice(-4)}`;
 }
 
-export function SmsPrefsSection({ householdId, isAdmin }: { householdId: string; isAdmin: boolean }) {
+export function SmsPrefsSection({
+  householdId,
+  isAdmin,
+  notificationsEnabled,
+}: {
+  householdId: string;
+  isAdmin: boolean;
+  notificationsEnabled: boolean;
+}) {
   const { session } = useAuth();
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [smsAvailable, setSmsAvailable] = useState(true);
   const [householdSms, setHouseholdSms] = useState(false);
   const [memberSms, setMemberSms] = useState(false);
   const [phone, setPhone] = useState<string | null>(null);
@@ -38,11 +48,13 @@ export function SmsPrefsSection({ householdId, isAdmin }: { householdId: string;
   useEffect(() => {
     if (!session) return;
     Promise.all([
+      getSmsAvailable(supabase),
       getHouseholdSmsEnabled(supabase, householdId),
       getMemberSmsEnabled(supabase, householdId, session.user.id),
       getMyPhoneNumber(supabase, session.user.id),
     ])
-      .then(([householdEnabled, memberEnabled, number]) => {
+      .then(([available, householdEnabled, memberEnabled, number]) => {
+        setSmsAvailable(available);
         setHouseholdSms(householdEnabled);
         setMemberSms(memberEnabled);
         setPhone(number?.phoneE164 ?? null);
@@ -115,7 +127,11 @@ export function SmsPrefsSection({ householdId, isAdmin }: { householdId: string;
       await setMemberSmsEnabled(supabase, householdId, session.user.id, true);
       setMemberSms(true);
       resetEditing();
-      setNotice('Number verified. You will get the daily digest by SMS.');
+      setNotice(
+        notificationsEnabled
+          ? 'Number verified. You will get the daily digest by SMS.'
+          : 'Number verified. Turn on "Notify me about expiring items" above to start receiving texts.'
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not verify the code');
     } finally {
@@ -129,10 +145,12 @@ export function SmsPrefsSection({ householdId, isAdmin }: { householdId: string;
     setError(null);
     setNotice(null);
     try {
-      await removeMyPhoneNumber(supabase, session.user.id);
+      // Switch the toggle off first: if deleting the number then fails, the UI
+      // still matches the server (toggle off, number still on file).
       await setMemberSmsEnabled(supabase, householdId, session.user.id, false);
-      setPhone(null);
       setMemberSms(false);
+      await removeMyPhoneNumber(supabase, session.user.id);
+      setPhone(null);
       resetEditing();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not remove your number');
@@ -167,7 +185,13 @@ export function SmsPrefsSection({ householdId, isAdmin }: { householdId: string;
         </p>
       )}
 
-      {householdSms && (
+      {!smsAvailable && (
+        <p style={{ color: color.mutedForeground, fontSize: 12, margin: 0 }}>
+          SMS reminders are switched off app-wide for now. They will start working once an administrator turns them on.
+        </p>
+      )}
+
+      {smsAvailable && householdSms && (
         <>
           {phone && !editing && (
             <>
@@ -178,6 +202,11 @@ export function SmsPrefsSection({ householdId, isAdmin }: { householdId: string;
                 <input type="checkbox" checked={memberSms} onChange={(e) => handleMemberToggle(e.target.checked)} />
                 Text me the daily digest
               </label>
+              {memberSms && !notificationsEnabled && (
+                <p style={{ color: color.mutedForeground, fontSize: 12, margin: 0 }}>
+                  Texts only go out while &quot;Notify me about expiring items&quot; above is on.
+                </p>
+              )}
               <div style={{ display: 'flex', gap: 8 }}>
                 <button type="button" onClick={() => setEditing(true)} style={buttonStyle('ghost')}>
                   Change number

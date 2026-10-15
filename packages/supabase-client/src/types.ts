@@ -224,6 +224,10 @@ export interface Database {
     // them, every `.from(...)` call silently degenerates to `never`.
     Views: Record<string, never>;
     Functions: {
+      sms_available: {
+        Args: Record<string, never>;
+        Returns: boolean;
+      };
       archive_pantry_item: {
         Args: {
           p_item_id: string;

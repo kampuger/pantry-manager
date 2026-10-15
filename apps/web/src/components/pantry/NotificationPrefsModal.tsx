@@ -7,6 +7,7 @@ import {
   getMemberNotificationsEnabled,
   setMemberNotificationsEnabled,
   triggerRemindersNow,
+  summarizeReminderRun,
 } from '@pantry/supabase-client';
 import { useAuth } from '@/lib/AuthProvider';
 import { supabase } from '@/lib/supabaseClient';
@@ -95,7 +96,7 @@ export function NotificationPrefsModal({
     setSendNowStatus(null);
     try {
       const result = await triggerRemindersNow(supabase, householdId);
-      setSendNowStatus(result.status === 'sent' ? 'Reminders sent.' : `Nothing to send (${result.status}).`);
+      setSendNowStatus(summarizeReminderRun(result));
     } catch (err) {
       setSendNowStatus(err instanceof Error ? err.message : 'Failed to send reminders');
     } finally {
@@ -135,7 +136,7 @@ export function NotificationPrefsModal({
               Notify me about expiring items (in-app and email)
             </label>
 
-            <SmsPrefsSection householdId={householdId} isAdmin={isAdmin} />
+            <SmsPrefsSection householdId={householdId} isAdmin={isAdmin} notificationsEnabled={notificationsEnabled} />
 
             {isAdmin && (
               <>

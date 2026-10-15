@@ -84,6 +84,22 @@ alter table app_settings
 -- own notification setting" (household_members), "owners/admins can update
 -- household" (households) and "admins can update app settings" (app_settings).
 
+-- Members cannot read app_settings (platform admins only), so the settings
+-- modal asks this function whether SMS is switched on app-wide. It exposes
+-- one boolean and nothing else.
+create or replace function sms_available()
+returns boolean
+language sql
+stable
+security definer
+set search_path = pg_catalog, public
+as $$
+  select coalesce((select sms_notifications_enabled from app_settings where id), false);
+$$;
+
+revoke execute on function sms_available() from public, anon;
+grant execute on function sms_available() to authenticated;
+
 -- =========================================================
 -- DELIVERY LOG + PER-DAY DEDUPE
 -- The household is part of the key so a member of two households gets both

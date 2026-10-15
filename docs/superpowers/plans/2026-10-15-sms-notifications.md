@@ -2657,7 +2657,7 @@ Everything here touches the live Supabase project or needs the gateway phone. As
 
 The user does this on the Android phone: install the TextBee app, sign in, register the device, disable battery optimization for it, keep it charged and online, and confirm the SIM has a text promo. They create an API key in the TextBee dashboard. Check the free plan's monthly message cap on TextBee's pricing page and note it.
 
-- [ ] **Step 2: Apply the migration** (Task 5, Step 4 SQL checks included)
+- [ ] **Step 2: Apply the migration FIRST** (Task 5, Step 4 SQL checks included). Never deploy the functions before this: the new `compute-and-send-reminders` selects `households.sms_enabled` and `app_settings.sms_notifications_enabled`, and without the migration the live email digest would return 500. The migration has never been run anywhere, so prefer a Supabase branch or scratch database first.
 
 Run: `supabase db push` after the user confirms the linked project is the intended one. Then run the constraint checks from Task 5 Step 4.
 Expected: migration applied; the international-number insert is rejected by the CHECK constraint.
@@ -2681,7 +2681,10 @@ Expected: both deploy; `supabase functions list` shows them active. The secret v
 5. Enter a wrong code. Expected: "That code is not right. 4 attempts left."
 6. Enter the right code. Expected: "Number verified", the masked number shows, and "Text me the daily digest" is checked.
 7. In the SQL editor confirm one row in `user_phone_numbers` for that user and none in `phone_verifications`.
-8. Try an international number through the form. Expected: rejected before any network call. Then call the function directly with one to confirm the server refuses it too:
+8. Throttle abuse checks (final-review finding C1; these are the only verification of that fix, since the function cannot be unit-tested). With a signed-in user's token and the owner's own number:
+   - Fire 10 `request` calls in parallel (`for i in 1 2 3 4 5 6 7 8 9 10; do curl ... & done; wait`). Expected: exactly one `200`, the rest `429`, and exactly one SMS arrives.
+   - Burn a code (5 wrong `confirm` calls), then immediately `request` again. Expected: `429` "Please wait…" until the 60 second cooldown passes, and after 5 sends in an hour, `429` until the window reopens (in `phone_verifications`, `sends_in_window` keeps counting and the row is never deleted).
+9. Try an international number through the form. Expected: rejected before any network call. Then call the function directly with one to confirm the server refuses it too:
 
 ```bash
 curl -s -X POST "https://nrjeqeddlssrxaskovrs.supabase.co/functions/v1/sms-verify" \
@@ -2691,6 +2694,8 @@ curl -s -X POST "https://nrjeqeddlssrxaskovrs.supabase.co/functions/v1/sms-verif
 ```
 
 Expected: HTTP 400 with the "Philippine mobile number" message.
+
+On the first real send also confirm TextBee's route and response: if the call is rejected, check the TextBee docs for the device-id form of the send route, and note which key holds the message id (the code looks for `_id`/`id`, so `provider_message_id` may stay null).
 
 - [ ] **Step 5: Verify the digest**
 

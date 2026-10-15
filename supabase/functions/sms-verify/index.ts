@@ -47,8 +47,23 @@ function toPending(row: any): PendingVerification {
   };
 }
 
-async function deletePending(admin: AdminClient, userId: string) {
-  await admin.from('phone_verifications').delete().eq('user_id', userId);
+// Never delete the row: besides the code it carries the resend throttle
+// (last_sent_at, sends_in_window, window_started_at). Deleting it after a
+// burned code, an expiry or a failed send would hand the caller a fresh
+// cooldown and hourly allowance every time. Expiring it makes the code
+// unusable and keeps the throttle intact.
+async function invalidatePending(admin: AdminClient, userId: string) {
+  await admin.from('phone_verifications').update({ expires_at: new Date().toISOString() }).eq('user_id', userId);
+}
+
+function throttled(retryAfterSeconds: number): Response {
+  return json(
+    {
+      error: `Please wait ${retryAfterSeconds} seconds before requesting another code.`,
+      retry_after: retryAfterSeconds,
+    },
+    429
+  );
 }
 
 async function handleRequest(admin: AdminClient, userId: string, phoneInput: unknown): Promise<Response> {
@@ -86,21 +101,12 @@ async function handleRequest(admin: AdminClient, userId: string, phoneInput: unk
   const { data: existing } = await admin.from('phone_verifications').select('*').eq('user_id', userId).maybeSingle();
   const now = new Date();
   const decision = checkSendAllowed(existing ? toPending(existing) : null, now);
-  if (!decision.allowed) {
-    return json(
-      {
-        error: `Please wait ${decision.retryAfterSeconds} seconds before requesting another code.`,
-        retry_after: decision.retryAfterSeconds,
-      },
-      429
-    );
-  }
+  if (!decision.allowed) return throttled(decision.retryAfterSeconds);
 
   const code = generateVerificationCode(() => crypto.getRandomValues(new Uint32Array(1))[0]);
   const codeHash = await hashVerificationCode(sha256Hex, userId, phone, code);
 
-  const { error: upsertError } = await admin.from('phone_verifications').upsert({
-    user_id: userId,
+  const claim = {
     phone_e164: phone,
     code_hash: codeHash,
     expires_at: new Date(now.getTime() + CODE_TTL_MS).toISOString(),
@@ -108,15 +114,36 @@ async function handleRequest(admin: AdminClient, userId: string, phoneInput: unk
     last_sent_at: now.toISOString(),
     sends_in_window: decision.sendsInWindow,
     window_started_at: decision.windowStartedAt,
-  });
-  if (upsertError) {
-    console.error('sms-verify: could not store code', upsertError.message);
-    return json({ error: 'Could not start verification. Try again later.' }, 500);
+  };
+
+  // Claim the send atomically so parallel requests can't each pass the
+  // throttle: a first request inserts (the primary key rejects a concurrent
+  // insert), a later one updates only if last_sent_at is still the value we
+  // read. Whoever loses the race gets the same "wait" answer as a resend.
+  if (!existing) {
+    const { error: insertError } = await admin.from('phone_verifications').insert({ user_id: userId, ...claim });
+    if (insertError) {
+      if (insertError.code === '23505') return throttled(60);
+      console.error('sms-verify: could not store code', insertError.message);
+      return json({ error: 'Could not start verification. Try again later.' }, 500);
+    }
+  } else {
+    const { data: updated, error: updateError } = await admin
+      .from('phone_verifications')
+      .update(claim)
+      .eq('user_id', userId)
+      .eq('last_sent_at', existing.last_sent_at)
+      .select('user_id');
+    if (updateError) {
+      console.error('sms-verify: could not store code', updateError.message);
+      return json({ error: 'Could not start verification. Try again later.' }, 500);
+    }
+    if (!updated || updated.length === 0) return throttled(60);
   }
 
   const sent = await provider.send({ to: phone, text: `Pantry Manager code: ${code}. Valid for 10 minutes.` });
   if (!sent.ok) {
-    await deletePending(admin, userId);
+    await invalidatePending(admin, userId);
     console.error('sms-verify: send failed', sent.error);
     return json({ error: 'Could not send the code. Try again later.' }, 502);
   }
@@ -146,10 +173,9 @@ async function handleConfirm(admin: AdminClient, userId: string, codeInput: unkn
     case 'no_pending':
       return json({ error: 'No verification in progress. Request a new code.' }, 400);
     case 'expired':
-      await deletePending(admin, userId);
       return json({ error: 'That code has expired. Request a new one.' }, 400);
     case 'too_many_attempts':
-      await deletePending(admin, userId);
+      await invalidatePending(admin, userId);
       return json({ error: 'Too many wrong attempts. Request a new code.' }, 429);
     case 'wrong_code':
       return json({ error: `That code is not right. ${decision.attemptsLeft} attempts left.` }, 400);
@@ -163,7 +189,7 @@ async function handleConfirm(admin: AdminClient, userId: string, codeInput: unkn
         console.error('sms-verify: could not save number', saveError.message);
         return json({ error: 'Could not save your number. Try again.' }, 500);
       }
-      await deletePending(admin, userId);
+      await invalidatePending(admin, userId);
       return json({ status: 'verified', phone_e164: row.phone_e164 });
     }
   }

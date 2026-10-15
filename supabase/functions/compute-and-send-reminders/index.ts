@@ -313,8 +313,20 @@ Deno.serve(async (req) => {
 
   // The two channels are independent: a failure in one never blocks or
   // un-marks the other, and each has its own same-day dedupe.
+  // Each channel also runs inside its own try/catch: a thrown error (not just
+  // a returned one) in one must not skip the other, or turn a delivered email
+  // into a 500.
+  async function runChannel(send: () => Promise<ChannelOutcome>): Promise<ChannelOutcome> {
+    try {
+      return await send();
+    } catch (err) {
+      console.error('compute-and-send-reminders: channel threw', err);
+      return { status: 'error', error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
   const emailOutcome: ChannelOutcome = emailGloballyOn
-    ? await sendEmailDigest(admin, householdId, household, todayManila, digestItems)
+    ? await runChannel(() => sendEmailDigest(admin, householdId!, household, todayManila, digestItems))
     : { status: 'disabled_globally' };
 
   let smsOutcome: ChannelOutcome;
@@ -323,7 +335,7 @@ Deno.serve(async (req) => {
   } else if (!household.sms_enabled) {
     smsOutcome = { status: 'household_disabled' };
   } else {
-    smsOutcome = await sendSmsDigest(admin, householdId, household.name, todayManila, digestItems);
+    smsOutcome = await runChannel(() => sendSmsDigest(admin, householdId!, household.name, todayManila, digestItems));
   }
 
   const body = { ...emailOutcome, sms: smsOutcome };

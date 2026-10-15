@@ -1,4 +1,4 @@
-import { getPantryItemReminders, triggerRemindersNow } from './reminders';
+import { getPantryItemReminders, summarizeReminderRun, triggerRemindersNow } from './reminders';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
@@ -59,5 +59,69 @@ describe('triggerRemindersNow', () => {
     const client = { functions: { invoke } } as unknown as SupabaseClient<Database>;
 
     await expect(triggerRemindersNow(client, 'house-1')).rejects.toThrow('403 Forbidden');
+  });
+});
+
+describe('triggerRemindersNow with a non-2xx response', () => {
+  it('returns the body when the function reported a status (e.g. email failed but SMS ran)', async () => {
+    const error = Object.assign(new Error('Edge Function returned a non-2xx status code'), {
+      context: { json: async () => ({ status: 'send_failed', sms: { status: 'sent' } }) },
+    });
+    const invoke = jest.fn(async () => ({ data: null, error }));
+    const client = { functions: { invoke } } as unknown as SupabaseClient<Database>;
+
+    expect(await triggerRemindersNow(client, 'house-1')).toEqual({ status: 'send_failed', sms: { status: 'sent' } });
+  });
+
+  it('still throws when the body is not a function result (e.g. a 403 plain-text body)', async () => {
+    const error = Object.assign(new Error('403 Forbidden'), {
+      context: {
+        json: async () => {
+          throw new Error('not json');
+        },
+      },
+    });
+    const invoke = jest.fn(async () => ({ data: null, error }));
+    const client = { functions: { invoke } } as unknown as SupabaseClient<Database>;
+
+    await expect(triggerRemindersNow(client, 'house-1')).rejects.toThrow('403 Forbidden');
+  });
+});
+
+describe('summarizeReminderRun', () => {
+  it('reports email and text outcomes separately', () => {
+    expect(summarizeReminderRun({ status: 'sent', sms: { status: 'sent' } })).toBe('Email sent. Text messages sent.');
+  });
+
+  it('does not say nothing was sent when only the texts went out', () => {
+    expect(summarizeReminderRun({ status: 'already_sent_today', sms: { status: 'sent' } })).toBe(
+      'Email was already sent today. Text messages sent.'
+    );
+  });
+
+  it('flags a failed channel without hiding the other', () => {
+    expect(summarizeReminderRun({ status: 'send_failed', sms: { status: 'sent' } })).toBe(
+      'Email failed to send. Text messages sent.'
+    );
+    expect(summarizeReminderRun({ status: 'sent', sms: { status: 'send_failed' } })).toBe(
+      'Email sent. Some text messages failed — try again.'
+    );
+  });
+
+  it('keeps the plain message when texting is off', () => {
+    expect(summarizeReminderRun({ status: 'sent', sms: { status: 'household_disabled' } })).toBe('Email sent.');
+    expect(summarizeReminderRun({ status: 'sent' })).toBe('Email sent.');
+  });
+
+  it('says so when there is nothing to send at all', () => {
+    expect(summarizeReminderRun({ status: 'no_eligible_items', sms: undefined })).toBe(
+      'Nothing to send — no items are expiring soon.'
+    );
+  });
+
+  it('explains an unconfigured gateway', () => {
+    expect(summarizeReminderRun({ status: 'sent', sms: { status: 'sms_not_configured' } })).toBe(
+      'Email sent. The SMS gateway is not configured.'
+    );
   });
 });
