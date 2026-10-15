@@ -4,3 +4,7 @@ project_id = "PantryManager"
 # only safe while the gateway verifies the signature. Keep this true.
 [functions.compute-and-send-reminders]
 verify_jwt = true
+
+# sms-verify identifies the caller from the JWT, so the gateway must verify it.
+[functions.sms-verify]
+verify_jwt = true
