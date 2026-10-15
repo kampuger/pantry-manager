@@ -9,6 +9,7 @@ export * from './notificationDigest';
 export * from './phoneNumber';
 export * from './digestSms';
 export * from './smsProvider';
+export * from './phoneVerification';
 export * from './bulkPaste';
 export * from './bulkRowColumns';
 export * from './csvHeaders';
