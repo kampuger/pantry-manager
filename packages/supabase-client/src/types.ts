@@ -14,6 +14,7 @@ export interface Database {
           notify_email_send_time: string;
           notify_email_intro: string | null;
           last_digest_sent_date: string | null;
+          sms_enabled: boolean;
           created_by: string;
           created_at: string;
           updated_at: string;
@@ -32,6 +33,7 @@ export interface Database {
           user_id: string;
           role: 'OWNER' | 'ADMIN' | 'MEMBER';
           notifications_enabled: boolean;
+          sms_enabled: boolean;
           joined_at: string;
         };
         Insert: Partial<Database['public']['Tables']['household_members']['Row']> & {
@@ -137,11 +139,47 @@ export interface Database {
         Row: {
           id: boolean;
           email_notifications_enabled: boolean;
+          sms_notifications_enabled: boolean;
           updated_by: string | null;
           updated_at: string;
         };
         Insert: Partial<Database['public']['Tables']['app_settings']['Row']>;
         Update: Partial<Database['public']['Tables']['app_settings']['Row']>;
+        Relationships: [];
+      };
+      user_phone_numbers: {
+        Row: {
+          user_id: string;
+          phone_e164: string;
+          verified_at: string;
+        };
+        Insert: Partial<Database['public']['Tables']['user_phone_numbers']['Row']> & {
+          user_id: string;
+          phone_e164: string;
+        };
+        Update: Partial<Database['public']['Tables']['user_phone_numbers']['Row']>;
+        Relationships: [];
+      };
+      notification_deliveries: {
+        Row: {
+          id: string;
+          household_id: string;
+          user_id: string;
+          channel: 'sms';
+          digest_date: string;
+          status: 'sent' | 'failed';
+          provider_message_id: string | null;
+          error: string | null;
+          created_at: string;
+        };
+        Insert: Partial<Database['public']['Tables']['notification_deliveries']['Row']> & {
+          household_id: string;
+          user_id: string;
+          channel: 'sms';
+          digest_date: string;
+          status: 'sent' | 'failed';
+        };
+        Update: Partial<Database['public']['Tables']['notification_deliveries']['Row']>;
         Relationships: [];
       };
       access_applications: {
